@@ -555,18 +555,34 @@ def get_item_variants(template_item, pos_profile):
 				attributes_map[attr["parent"]][attr["attribute"]] = attr["attribute_value"]
 
 		# Batch query stock for all variants at once (performance optimization)
+		# Use get_stock_availability to properly handle group warehouses and missing Bin entries
 		stock_map = {}
 		if variant_codes and pos_profile_doc.warehouse:
+			# Handle group warehouses properly using ERPNext's function
+			from erpnext.stock.doctype.warehouse.warehouse import get_child_warehouses
+			
+			# Get all warehouses to check (includes child warehouses if group warehouse)
+			warehouses = get_child_warehouses(pos_profile_doc.warehouse)
+			
+			# Query stock from Bin table, summing across all relevant warehouses
+			# Bin table is the authoritative source for current stock balances
 			stocks = frappe.db.sql(
 				"""
-				SELECT item_code, actual_qty
+				SELECT item_code, COALESCE(SUM(actual_qty), 0) as actual_qty
 				FROM `tabBin`
-				WHERE item_code IN %s AND warehouse = %s
+				WHERE item_code IN %s AND warehouse IN %s
+				GROUP BY item_code
 				""",
-				[variant_codes, pos_profile_doc.warehouse],
+				[variant_codes, warehouses],
 				as_dict=1,
 			)
-			stock_map = {s["item_code"]: s["actual_qty"] for s in stocks}
+			stock_map = {s["item_code"]: flt(s["actual_qty"]) for s in stocks}
+			
+			# Initialize all variants in stock_map with 0 if not found
+			# This ensures every variant has a stock value (even if 0)
+			for variant_code in variant_codes:
+				if variant_code not in stock_map:
+					stock_map[variant_code] = 0.0
 
 		# Enrich each variant with attributes, price, stock, and UOMs
 		for variant in variants:
@@ -959,16 +975,99 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 		if item_codes and pos_profile_doc.warehouse:
 			stock_items = [item["item_code"] for item in items if item.get("is_stock_item")]
 			if stock_items:
+				# Handle group warehouses by getting all child warehouses
+				from erpnext.stock.doctype.warehouse.warehouse import get_child_warehouses
+				warehouses = get_child_warehouses(pos_profile_doc.warehouse)
+				
 				stocks = frappe.db.sql(
 					"""
-					SELECT item_code, actual_qty
+					SELECT item_code, COALESCE(SUM(actual_qty), 0) as actual_qty
 					FROM `tabBin`
-					WHERE item_code IN %s AND warehouse = %s
+					WHERE item_code IN %s AND warehouse IN %s
+					GROUP BY item_code
 					""",
-					[stock_items, pos_profile_doc.warehouse],
+					[stock_items, warehouses],
 					as_dict=1,
 				)
-				stock_map = {s["item_code"]: s["actual_qty"] for s in stocks}
+				stock_map = {s["item_code"]: flt(s["actual_qty"]) for s in stocks}
+
+		# ===================================================================
+		# TEMPLATE ITEM VARIANT STOCK: Sum all variant stock for templates
+		# ===================================================================
+		# Template items (has_variants=1) don't have stock themselves.
+		# Their stock badge should show the SUM of all variant stocks.
+		# This allows users to see total available quantity across all variants.
+		#
+		# Example:
+		#   Template: "T-Shirt"
+		#   Variants:
+		#     - T-Shirt (Red, Size S): 10 units
+		#     - T-Shirt (Blue, Size M): 15 units
+		#     - T-Shirt (Green, Size L): 5 units
+		#   Template badge shows: 30 (sum of all variants)
+		#
+		template_variant_stock_map = {}
+		if item_codes and pos_profile_doc.warehouse:
+			# Find all template items in the current result set
+			template_items = [item["item_code"] for item in items if item.get("has_variants")]
+			
+			if template_items:
+				# Get all variants for all templates in one query
+				all_variants = frappe.get_all(
+					"Item",
+					filters={
+						"variant_of": ["in", template_items],
+						"disabled": 0,
+						"is_sales_item": 1,
+					},
+					fields=["name", "variant_of"],
+				)
+				
+				# Group variants by template
+				variants_by_template = {}
+				for variant in all_variants:
+					template = variant["variant_of"]
+					if template not in variants_by_template:
+						variants_by_template[template] = []
+					variants_by_template[template].append(variant["name"])
+				
+				# If we have variants, query their stock
+				if variants_by_template:
+					variant_codes = [v["name"] for v in all_variants]
+					
+					# Handle group warehouses
+					from erpnext.stock.doctype.warehouse.warehouse import get_child_warehouses
+					warehouses = get_child_warehouses(pos_profile_doc.warehouse)
+					
+					# Query stock for all variants at once
+					variant_stocks = frappe.db.sql(
+						"""
+						SELECT item_code, COALESCE(SUM(actual_qty), 0) as actual_qty
+						FROM `tabBin`
+						WHERE item_code IN %s AND warehouse IN %s
+						GROUP BY item_code
+						""",
+						[variant_codes, warehouses],
+						as_dict=1,
+					)
+					
+					# Create a map of variant_code -> stock
+					variant_stock_lookup = {s["item_code"]: flt(s["actual_qty"]) for s in variant_stocks}
+					
+					# Initialize all variants with 0 if not found
+					for variant_code in variant_codes:
+						if variant_code not in variant_stock_lookup:
+							variant_stock_lookup[variant_code] = 0.0
+					
+					# Sum stock for each template
+					for template_code, variant_list in variants_by_template.items():
+						total_stock = sum(variant_stock_lookup.get(variant_code, 0.0) for variant_code in variant_list)
+						template_variant_stock_map[template_code] = total_stock
+				
+				# Initialize templates with 0 if they have no variants or no stock
+				for template_code in template_items:
+					if template_code not in template_variant_stock_map:
+						template_variant_stock_map[template_code] = 0.0
 
 		# ===================================================================
 		# PRODUCT BUNDLE AVAILABILITY: Calculate bundle stock (bulk optimized)
@@ -1075,33 +1174,44 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 			item["price_list_rate_price_uom"] = display_rate
 
 			# ===================================================================
-			# STOCK QUANTITY ASSIGNMENT: Stock Items vs Product Bundles
+			# STOCK QUANTITY ASSIGNMENT: Stock Items vs Product Bundles vs Templates
 			# ===================================================================
 			# Stock items: Use actual_qty from Bin table (direct stock tracking)
 			# Product Bundles: Use calculated availability from component stock
+			# Template items: Use sum of all variant stock
 			#
 			# Decision Logic:
-			#   IF item.is_stock_item == 1:
+			#   IF item.has_variants == 1:
+			#     actual_qty = sum of all variant stocks (for badge display)
+			#   ELIF item.is_stock_item == 1:
 			#     actual_qty = stock from Bin table (or 0 if not in stock)
 			#   ELSE:
 			#     actual_qty = bundle availability (or 0 if not a bundle)
 			#
-			# Example 1 - Stock Item (Laptop):
+			# Example 1 - Template Item (T-Shirt):
+			#   has_variants = 1
+			#   actual_qty = 30 (sum of all variant stocks: 10+15+5)
+			#
+			# Example 2 - Stock Item (Laptop):
 			#   is_stock_item = 1
 			#   actual_qty = 50 (from Bin table)
 			#
-			# Example 2 - Product Bundle (Office Kit):
+			# Example 3 - Product Bundle (Office Kit):
 			#   is_stock_item = 0 (bundles are not stock items)
 			#   actual_qty = 7 (calculated from components)
 			#
-			# Example 3 - Service Item (Consulting):
+			# Example 4 - Service Item (Consulting):
 			#   is_stock_item = 0
 			#   actual_qty = 0 (not a bundle, no stock tracking)
-			item["actual_qty"] = (
-				stock_map.get(item["item_code"], 0)
-				if item.get("is_stock_item")
-				else bundle_availability_map.get(item["item_code"], 0)
-			)
+			if item.get("has_variants"):
+				# Template item: show sum of all variant stocks
+				item["actual_qty"] = template_variant_stock_map.get(item["item_code"], 0.0)
+			else:
+				item["actual_qty"] = (
+					stock_map.get(item["item_code"], 0)
+					if item.get("is_stock_item")
+					else bundle_availability_map.get(item["item_code"], 0)
+				)
 
 			# ===================================================================
 			# BUNDLE MARKER: Flag items that are Product Bundles
