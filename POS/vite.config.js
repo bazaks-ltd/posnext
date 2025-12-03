@@ -71,11 +71,11 @@ export default defineConfig({
 			registerType: "autoUpdate",
 			includeAssets: ["favicon.png", "icon.svg", "icon-maskable.svg"],
 			manifest: {
-				name: "POSNext",
-				short_name: "POSNext",
+				name: "BZKPOS",
+				short_name: "BZKPOS",
 				description:
-					"Point of Sale system with real-time billing, stock management, and offline support",
-				theme_color: "#4F46E5",
+					"Point of Sale system with real-time billing, stock management, and offline support by Bazaks",
+				theme_color: "#e41300",
 				background_color: "#ffffff",
 				display: "standalone",
 				scope: "/assets/pos_next/pos/",

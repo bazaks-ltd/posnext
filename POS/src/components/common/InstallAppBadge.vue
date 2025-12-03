@@ -18,17 +18,15 @@
 				<div class="flex items-center gap-2">
 					<!-- App Icon -->
 					<div class="flex-shrink-0">
-						<div class="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm" style="background-color: #4F46E5;">
-							<svg class="w-6 h-6" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-								<path fill="#ffffff" d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-							</svg>
+						<div class="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm overflow-hidden" style="background-color: #ffffff;">
+							<img src="/logo.svg" alt="BZKPOS" class="w-9 h-9 object-contain" />
 						</div>
 					</div>
 
 					<!-- Text Content -->
 					<div class="flex-1 min-w-0 me-2">
 						<h3 id="install-banner-title" class="text-xs font-semibold mb-0.5 leading-tight" style="color: #111827;">
-							{{ __('Install POSNext') }}
+							{{ __('Install BZKPOS') }}
 						</h3>
 						<p class="text-[10px] leading-tight mb-1" style="color: #4B5563;">
 							{{ __('Faster access and offline support') }}
@@ -47,7 +45,7 @@
 						<button
 							@click="handleInstall"
 							class="px-3 py-1.5 text-xs font-medium rounded hover:opacity-90 active:opacity-80 transition-opacity touch-manipulation shadow-sm whitespace-nowrap"
-							style="background-color: #4F46E5; color: #ffffff;"
+							style="background-color: #e41300; color: #ffffff;"
 						>
 							{{  __('Install') }}
 						</button>
