@@ -151,9 +151,26 @@ export function useInvoice() {
 
 	// Actions
 	function addItem(item, quantity = 1) {
-		const existingItem = invoiceItems.value.find(
-			(i) => i.item_code === item.item_code,
-		)
+		// For items with bundles, don't merge - each bundle should be a separate line
+		// For batch items with serial_and_batch_bundle, treat each bundle as unique
+		const existingItem = invoiceItems.value.find((i) => {
+			// Items must have same item_code
+			if (i.item_code !== item.item_code) return false
+			
+			// If item has a bundle, it should NOT be merged with other items
+			// Each bundle is a separate line item
+			if (item.serial_and_batch_bundle || i.serial_and_batch_bundle) {
+				return false // Never merge items with bundles
+			}
+			
+			// For batch items without bundles, check if same batch
+			if (item.batch_no || i.batch_no) {
+				return i.batch_no === item.batch_no
+			}
+			
+			// Otherwise, can merge
+			return true
+		})
 
 		if (existingItem) {
 			// Store old values before update for incremental cache adjustment
@@ -209,6 +226,8 @@ export function useInvoice() {
 				has_serial_no: item.has_serial_no || 0,
 				batch_no: item.batch_no,
 				serial_no: item.serial_no,
+				serial_and_batch_bundle: item.serial_and_batch_bundle, // Add bundle reference
+				_bundle_data: item._bundle_data, // Add bundle data for display
 				item_uoms: item.item_uoms || [], // Available UOMs for this item
 				// Add item_group and brand for offer eligibility checking
 				item_group: item.item_group,
@@ -621,28 +640,44 @@ export function useInvoice() {
 			pos_profile: posProfile.value,
 			posa_pos_opening_shift: posOpeningShift.value,
 			customer: customer.value?.name || customer.value,
-			items: rawItems.map((item) => ({
-				item_code: item.item_code,
-				item_name: item.item_name,
-				qty: item.quantity,
-				// IMPORTANT: Rate calculation depends on tax mode and discounts
-				// Tax-inclusive mode: Send gross amount (price after discount, before tax extraction)
-				//   - With discount: price_list_rate - discount_amount
-				//   - Without discount: price_list_rate
-				//   ERPNext will extract net amount based on included_in_print_rate flag
-				// Tax-exclusive mode: Send net amount (after discount, before tax addition)
-				rate: taxInclusive.value
-					? ((item.price_list_rate || item.rate) - (item.discount_amount || 0) / (item.quantity || 1))
-					: (item.quantity > 0 ? item.amount / item.quantity : item.rate),
-				price_list_rate: item.price_list_rate || item.rate,
-				uom: item.uom,
-				warehouse: item.warehouse,
-				batch_no: item.batch_no,
-				serial_no: item.serial_no,
-				conversion_factor: item.conversion_factor || 1,
-				discount_percentage: item.discount_percentage || 0,
-				discount_amount: item.discount_amount || 0,
-			})),
+			items: rawItems.map((item) => {
+				const itemData = {
+					item_code: item.item_code,
+					item_name: item.item_name,
+					qty: item.quantity,
+					// IMPORTANT: Rate calculation depends on tax mode and discounts
+					// Tax-inclusive mode: Send gross amount (price after discount, before tax extraction)
+					//   - With discount: price_list_rate - discount_amount
+					//   - Without discount: price_list_rate
+					//   ERPNext will extract net amount based on included_in_print_rate flag
+					// Tax-exclusive mode: Send net amount (after discount, before tax addition)
+					rate: taxInclusive.value
+						? ((item.price_list_rate || item.rate) - (item.discount_amount || 0) / (item.quantity || 1))
+						: (item.quantity > 0 ? item.amount / item.quantity : item.rate),
+					price_list_rate: item.price_list_rate || item.rate,
+					uom: item.uom,
+					warehouse: item.warehouse,
+					conversion_factor: item.conversion_factor || 1,
+					discount_percentage: item.discount_percentage || 0,
+					discount_amount: item.discount_amount || 0,
+				}
+				
+				// If using serial_and_batch_bundle, don't include batch_no or serial_no
+				// ERPNext will use the bundle instead
+				if (item.serial_and_batch_bundle) {
+					itemData.serial_and_batch_bundle = item.serial_and_batch_bundle
+				} else {
+					// Only include legacy fields if no bundle exists
+					if (item.batch_no) {
+						itemData.batch_no = item.batch_no
+					}
+					if (item.serial_no) {
+						itemData.serial_no = item.serial_no
+					}
+				}
+				
+				return itemData
+			}),
 			payments: rawPayments.map((p) => ({
 				mode_of_payment: p.mode_of_payment,
 				amount: p.amount,
@@ -676,28 +711,44 @@ export function useInvoice() {
 				pos_profile: posProfile.value,
 				posa_pos_opening_shift: posOpeningShift.value,
 				customer: customer.value?.name || customer.value,
-				items: rawItems.map((item) => ({
-					item_code: item.item_code,
-					item_name: item.item_name,
-					qty: item.quantity,
-					// IMPORTANT: Rate calculation depends on tax mode and discounts
-					// Tax-inclusive mode: Send gross amount (price after discount, before tax extraction)
-					//   - With discount: price_list_rate - discount_amount
-					//   - Without discount: price_list_rate
-					//   ERPNext will extract net amount based on included_in_print_rate flag
-					// Tax-exclusive mode: Send net amount (after discount, before tax addition)
-					rate: taxInclusive.value
-						? ((item.price_list_rate || item.rate) - (item.discount_amount || 0) / (item.quantity || 1))
-						: (item.quantity > 0 ? item.amount / item.quantity : item.rate),
-					price_list_rate: item.price_list_rate || item.rate,
-					uom: item.uom,
-					warehouse: item.warehouse,
-					batch_no: item.batch_no,
-					serial_no: item.serial_no,
-					conversion_factor: item.conversion_factor || 1,
-					discount_percentage: item.discount_percentage || 0,
-					discount_amount: item.discount_amount || 0,
-				})),
+				items: rawItems.map((item) => {
+					const itemData = {
+						item_code: item.item_code,
+						item_name: item.item_name,
+						qty: item.quantity,
+						// IMPORTANT: Rate calculation depends on tax mode and discounts
+						// Tax-inclusive mode: Send gross amount (price after discount, before tax extraction)
+						//   - With discount: price_list_rate - discount_amount
+						//   - Without discount: price_list_rate
+						//   ERPNext will extract net amount based on included_in_print_rate flag
+						// Tax-exclusive mode: Send net amount (after discount, before tax addition)
+						rate: taxInclusive.value
+							? ((item.price_list_rate || item.rate) - (item.discount_amount || 0) / (item.quantity || 1))
+							: (item.quantity > 0 ? item.amount / item.quantity : item.rate),
+						price_list_rate: item.price_list_rate || item.rate,
+						uom: item.uom,
+						warehouse: item.warehouse,
+						conversion_factor: item.conversion_factor || 1,
+						discount_percentage: item.discount_percentage || 0,
+						discount_amount: item.discount_amount || 0,
+					}
+					
+					// If using serial_and_batch_bundle, don't include batch_no or serial_no
+					// ERPNext will use the bundle instead
+					if (item.serial_and_batch_bundle) {
+						itemData.serial_and_batch_bundle = item.serial_and_batch_bundle
+					} else {
+						// Only include legacy fields if no bundle exists
+						if (item.batch_no) {
+							itemData.batch_no = item.batch_no
+						}
+						if (item.serial_no) {
+							itemData.serial_no = item.serial_no
+						}
+					}
+					
+					return itemData
+				}),
 				payments: rawPayments.map((p) => ({
 					mode_of_payment: p.mode_of_payment,
 					amount: p.amount,

@@ -1737,6 +1737,11 @@ function handleReturnCreated(returnInvoice) {
 	showSuccess(__('Return invoice {0} created successfully', [returnInvoice.name]))
 }
 
+function handleInvoiceShared(data) {
+	log.info('Invoice shared:', data)
+	showSuccess(__('Invoice shared via {0} successfully', [data.channel]))
+}
+
 function handleDiscountApplied(discount) {
 	cartStore.applyDiscountToCart(discount)
 	uiStore.showCouponDialog = false
@@ -1759,14 +1764,28 @@ async function handleApplyOffer(offer) {
 
 function handleBatchSerialSelected(batchSerial) {
 	if (cartStore.pendingItem) {
-		// Use quantity from batchSerial if provided (for multiple serial numbers), otherwise use pendingItemQty
-		const qty = batchSerial.quantity || cartStore.pendingItemQty
-		const itemToAdd = {
-			...cartStore.pendingItem,
-			quantity: qty,
-			...batchSerial,
-		}
 		try {
+			console.log("handleBatchSerialSelected received:", batchSerial)
+			
+			// Create ONE cart item with bundle reference
+			const qty = batchSerial.quantity || cartStore.pendingItemQty
+			const itemToAdd = {
+				...cartStore.pendingItem,
+				quantity: qty,
+				...batchSerial,
+			}
+			
+			// Add serial_and_batch_bundle reference if available
+			if (batchSerial.serial_and_batch_bundle) {
+				itemToAdd.serial_and_batch_bundle = batchSerial.serial_and_batch_bundle
+			}
+			
+			// Add bundle_data for display purposes
+			if (batchSerial._bundle_data) {
+				itemToAdd._bundle_data = batchSerial._bundle_data
+			}
+			
+			console.log("Adding item to cart:", itemToAdd)
 			cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile)
 			cartStore.clearPendingItem()
 		} catch (error) {

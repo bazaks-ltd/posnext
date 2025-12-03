@@ -662,6 +662,21 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (updatedDetails.serial_no !== undefined) {
 				cartItem.serial_no = updatedDetails.serial_no
 			}
+			
+			// Update batch bundle reference if provided
+			if (updatedDetails.serial_and_batch_bundle !== undefined) {
+				cartItem.serial_and_batch_bundle = updatedDetails.serial_and_batch_bundle
+			}
+			
+			// Update bundle data if provided (for display purposes)
+			if (updatedDetails._bundle_data !== undefined) {
+				cartItem._bundle_data = updatedDetails._bundle_data
+			}
+			
+			// Update batch_no if provided (for legacy compatibility)
+			if (updatedDetails.batch_no !== undefined) {
+				cartItem.batch_no = updatedDetails.batch_no
+			}
 
 			// Recalculate item totals (this will compute the correct rate from price_list_rate and discount)
 			recalculateItem(cartItem)
