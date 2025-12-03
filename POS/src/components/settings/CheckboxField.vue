@@ -6,7 +6,7 @@
 				type="checkbox"
 				:checked="modelValue"
 				@change="$emit('update:modelValue', $event.target.checked ? 1 : 0)"
-				class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-1 cursor-pointer"
+				class="w-4 h-4 text-red-500 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-1 cursor-pointer"
 			/>
 		</div>
 		<div class="flex-1 min-w-0">

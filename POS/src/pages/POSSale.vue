@@ -33,7 +33,7 @@
 						@click="uiStore.showOpenShiftDialog = true"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
 					>
-						<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
 						</svg>
 						<span>{{ __('View Shift') }}</span>
@@ -115,7 +115,7 @@
 					:class="[
 						'flex-1 px-3 py-3 text-sm font-semibold transition-[color,background-color,border-color] duration-100 relative touch-manipulation',
 						uiStore.mobileActiveTab === 'items'
-							? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
+						? 'text-red-500 border-b-3 border-red-500 bg-red-50'
 							: 'text-gray-600 hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100'
 					]"
 					:aria-label="__('View items')"
@@ -134,7 +134,7 @@
 					:class="[
 						'flex-1 px-3 py-3 text-sm font-semibold transition-[color,background-color,border-color] duration-100 relative touch-manipulation',
 						uiStore.mobileActiveTab === 'cart'
-							? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
+						? 'text-red-500 border-b-3 border-red-500 bg-red-50'
 							: 'text-gray-600 hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100'
 					]"
 					:aria-label="__('View cart')"
@@ -146,7 +146,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
 						</svg>
 						<span>{{ __('Cart') }}</span>
-						<span v-if="cartStore.itemCount > 0" class="bg-blue-600 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center shadow-sm">
+						<span v-if="cartStore.itemCount > 0" class="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center shadow-sm">
 							{{ cartStore.itemCount }}
 						</span>
 					</div>
@@ -181,9 +181,9 @@
 				role="separator"
 				aria-orientation="vertical"
 				@pointerdown="startResize"
-				class="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize relative flex-shrink-0 transition-[background-color] duration-100 hidden lg:block"
+			class="w-1 bg-gray-200 hover:bg-red-400 cursor-col-resize relative flex-shrink-0 transition-[background-color] duration-100 hidden lg:block"
 				:class="{
-					'bg-blue-500': uiStore.isResizing,
+				'bg-red-500': uiStore.isResizing,
 					'pointer-events-none opacity-0': uiStore.isAnyDialogOpen,
 					'z-[1]': !uiStore.isAnyDialogOpen
 				}"
@@ -191,7 +191,7 @@
 				<div class="absolute inset-y-0 -left-2 -right-2" style="cursor: col-resize;"></div>
 				<div
 					class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-12 bg-gray-400 rounded-full"
-					:class="{ 'bg-blue-600': uiStore.isResizing, 'bg-blue-500': !uiStore.isResizing }"
+					:class="{ 'bg-red-600': uiStore.isResizing, 'bg-red-500': !uiStore.isResizing }"
 					style="transition: background-color 0.1s ease; opacity: 0.8;"
 				></div>
 			</div>
@@ -242,7 +242,7 @@
 			<button
 				v-if="!uiStore.isDesktop && uiStore.mobileActiveTab === 'items' && cartStore.itemCount > 0"
 				@click="uiStore.setMobileTab('cart')"
-				class="lg:hidden fixed bottom-20 end-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-full p-4 shadow-2xl hover:shadow-3xl hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 transition-[background,box-shadow,transform] duration-200 z-50 touch-manipulation active:scale-95 ring-4 ring-blue-100"
+				class="lg:hidden fixed bottom-20 end-4 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full p-4 shadow-2xl hover:shadow-3xl hover:from-red-600 hover:to-red-700 active:from-red-700 active:to-red-800 transition-[background,box-shadow,transform] duration-200 z-50 touch-manipulation active:scale-95 ring-4 ring-red-100"
 				:aria-label="__('View cart with {0} items', [cartStore.itemCount])"
 			>
 				<div class="relative">
@@ -264,11 +264,11 @@
 		<div v-else class="flex-1 flex items-center justify-center bg-gray-50" style="max-height: calc(100vh - 60px - var(--header-height, 60px));">
 			<div class="text-center">
 				<div class="mx-auto flex items-center justify-center h-24 w-24 rounded-full bg-blue-100">
-					<svg class="h-12 w-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="h-12 w-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
 					</svg>
 				</div>
-				<h3 class="mt-4 text-lg font-medium text-gray-900">{{ __('Welcome to POS Next') }}</h3>
+				<h3 class="mt-4 text-lg font-medium text-gray-900">{{ __('Welcome to BZKPOS') }}</h3>
 				<p class="mt-2 text-sm text-gray-500">{{ __('Please open a shift to start making sales') }}</p>
 				<Button
 					variant="solid"
@@ -514,7 +514,7 @@
 						<button
 							@click="logoutWithCloseShift"
 							:disabled="session.logout.loading"
-							class="w-full flex items-center justify-center px-5 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg shadow-lg hover:shadow-blue-500/30 transition-[background,box-shadow,opacity,transform] duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
+							class="w-full flex items-center justify-center px-5 py-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-red-500/30 transition-[background,box-shadow,opacity,transform] duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
 						>
 							<svg class="w-5 h-5 me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
@@ -554,7 +554,7 @@
 							{{ __('Sign Out?') }}
 						</h3>
 						<p class="text-sm text-gray-600">
-							{{ __('You will be logged out of POS Next') }}
+							{{ __('You will be logged out of BZKPOS') }}
 						</p>
 					</div>
 
@@ -562,7 +562,7 @@
 						<button
 							@click="uiStore.showLogoutDialog = false"
 							:disabled="session.logout.loading"
-							class="px-5 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:shadow-blue-500/30 transition-[background-color,box-shadow,opacity,transform] duration-200 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+							class="px-5 py-4 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg shadow-md hover:shadow-red-500/30 transition-[background-color,box-shadow,opacity,transform] duration-200 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
 						>
 							{{ __('Cancel') }}
 						</button>

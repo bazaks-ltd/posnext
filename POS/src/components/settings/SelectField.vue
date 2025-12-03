@@ -7,7 +7,7 @@
 			:id="fieldId"
 			:value="modelValue"
 			@change="$emit('update:modelValue', $event.target.value)"
-			class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer"
+			class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-transparent bg-white cursor-pointer"
 		>
 			<option value="">{{ __('-- Select --') }}</option>
 			<option

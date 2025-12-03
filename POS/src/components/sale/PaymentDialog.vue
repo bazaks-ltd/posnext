@@ -5,7 +5,7 @@
 				<!-- INFORMATION SECTION (TOP) -->
 
 				<!-- Payment Summary Card -->
-				<div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+				<div class="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 border border-red-100">
 					<div class="flex justify-between items-start mb-3">
 						<div>
 							<div class="text-start text-xs font-medium text-gray-600 mb-1">{{ __('Total Amount') }}</div>
@@ -40,7 +40,7 @@
 						<div
 							:class="[
 								'h-full transition-all duration-300',
-								totalPaid >= grandTotal ? 'bg-green-500' : 'bg-blue-500'
+								totalPaid >= grandTotal ? 'bg-green-500' : 'bg-red-500'
 							]"
 							:style="{ width: `${grandTotal > 0 ? Math.min((totalPaid / grandTotal) * 100, 100) : 0}%` }"
 						></div>
@@ -346,7 +346,7 @@
 					</div>
 					<!-- Loading State -->
 					<div v-if="loadingPaymentMethods" class="flex items-center justify-center py-8">
-						<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+						<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
 						<span class="ms-3 text-sm text-gray-500">{{ __('Loading payment methods...') }}</span>
 					</div>
 					<!-- Payment Methods -->
@@ -360,7 +360,7 @@
 								'group relative p-4 rounded-xl border-2 transition-all text-start',
 								'hover:shadow-lg transform hover:-translate-y-0.5',
 								remainingAmount === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-								'border-gray-200 hover:border-blue-400 bg-white hover:bg-blue-50'
+								'border-gray-200 hover:border-red-400 bg-white hover:bg-red-50'
 							]"
 						>
 							<div class="flex items-start justify-between">
@@ -376,7 +376,7 @@
 									</div>
 								</div>
 								<div class="opacity-0 group-hover:opacity-100 transition-opacity">
-									<svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
 									</svg>
 								</div>
@@ -384,7 +384,7 @@
 							<div v-if="getMethodTotal(method.mode_of_payment) > 0"
 								class="mt-2 pt-2 border-t border-gray-200">
 								<div class="text-xs text-gray-500">{{ __('Added') }}</div>
-								<div class="font-bold text-blue-600">
+								<div class="font-bold text-red-500">
 									{{ formatCurrency(getMethodTotal(method.mode_of_payment)) }}
 								</div>
 							</div>
@@ -409,7 +409,7 @@
 							v-for="amount in quickAmounts"
 							:key="amount"
 							@click="addCustomPayment(lastSelectedMethod, amount)"
-							class="px-4 py-3 text-sm font-semibold rounded-lg bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700 hover:text-blue-600 transition-all"
+							class="px-4 py-3 text-sm font-semibold rounded-lg bg-white border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 text-gray-700 hover:text-red-500 transition-all"
 						>
 							{{ formatCurrency(amount) }}
 						</button>
@@ -460,7 +460,7 @@
 									type="number"
 									step="5"
 									min="0"
-									class="w-28 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+									class="w-28 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
 									@input="updatePaymentEntry(index, $event.target.value)"
 								/>
 								<button
@@ -490,7 +490,7 @@
 						'h-12 text-base font-semibold px-4 rounded-lg touch-manipulation',
 						!canComplete
 							? 'bg-blue-300 text-white cursor-not-allowed'
-							: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-400'
+							: 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 focus-visible:ring-2 focus-visible:ring-red-400'
 					]"
 				>
 					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -624,7 +624,7 @@
 							'h-9 text-sm font-semibold px-5 rounded-lg',
 							!canComplete
 								? 'bg-blue-300 text-white cursor-not-allowed'
-								: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-400'
+								: 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 focus-visible:ring-2 focus-visible:ring-red-400'
 						]"
 					>
 						<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

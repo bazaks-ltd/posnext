@@ -17,8 +17,8 @@ import { call } from '@/utils/apiWrapper'
 
 // Component state
 const footerText = ref('Powered by')
-const linkText = ref('BrainWise')
-const footerLink = ref('https://nexus.brainwise.me')
+const linkText = ref('Bazaks')
+const footerLink = ref('https://bazaks.com')
 const footerRoot = ref(null)
 const config = ref({})
 const serverValidationEnabled = ref(true)
@@ -26,7 +26,7 @@ const serverValidationEnabled = ref(true)
 // Dynamic class and style to prevent easy CSS targeting
 const componentId = Math.random().toString(36).substring(7)
 const footerClass = ref(`pos-footer-component pos-footer-component-${componentId}`)
-const brandSignature = computed(() => `BrainWise-${componentId}`)
+const brandSignature = computed(() => `Bazaks-${componentId}`)
 
 const footerStyle = computed(() => ({
 	padding: config.value._s?.p || '12px 20px',
@@ -81,11 +81,11 @@ const loadBrandingConfig = async () => {
 			}
 		}
 	} catch (error) {
-		console.error('[BrainWise] Failed to load branding config:', error)
+		console.error('[Bazaks] Failed to load branding config:', error)
 		// Use fallback values
 		footerText.value = 'Powered by'
-		linkText.value = 'BrainWise'
-		footerLink.value = 'https://nexus.brainwise.me'
+		linkText.value = 'Bazaks'
+		footerLink.value = 'https://bazaks.com'
 	}
 }
 
@@ -100,7 +100,7 @@ const validateWithServer = async () => {
 			brand_url: footerLink.value
 		})
 	} catch (error) {
-		console.error('[BrainWise] Server validation failed:', error)
+		console.error('[Bazaks] Server validation failed:', error)
 	}
 }
 
@@ -123,15 +123,15 @@ const logClientEvent = async (eventType, details = {}) => {
 			})
 		})
 	} catch (error) {
-		console.error('[BrainWise] Failed to log event:', error)
+		console.error('[Bazaks] Failed to log event:', error)
 	}
 }
 
 const ensureBranding = () => {
 	if (!footerRoot.value) return
 
-	const expectedBrand = atob(config.value._l || btoa('BrainWise'))
-	const expectedUrl = atob(config.value._u || btoa('https://nexus.brainwise.me'))
+	const expectedBrand = atob(config.value._l || btoa('Bazaks'))
+	const expectedUrl = atob(config.value._u || btoa('https://bazaks.com'))
 	const expectedText = atob(config.value._t || btoa('Powered by'))
 
 	// Check if values have been tampered
@@ -188,13 +188,13 @@ const ensureStylePresence = () => {
 				color: #6b7280;
 			}
 			.pos-footer-component .footer-link {
-				color: #3b82f6;
+				color: #ef4444;
 				text-decoration: none;
 				font-weight: 600;
 				transition: color 0.2s;
 			}
 			.pos-footer-component .footer-link:hover {
-				color: #2563eb;
+				color: #dc2626;
 				text-decoration: underline;
 			}
 		`

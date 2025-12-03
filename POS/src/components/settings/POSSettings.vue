@@ -10,10 +10,10 @@
 			<div class="fixed inset-0 flex items-center justify-center p-4 md:p-6">
 				<div class="w-full max-w-5xl max-h-[90vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col">
 					<!-- Header -->
-					<div class="flex items-center justify-between px-6 py-5 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+					<div class="flex items-center justify-between px-6 py-5 border-b bg-gradient-to-r from-red-50 to-red-100">
 						<div class="flex items-center gap-3">
 							<div class="p-2 bg-blue-100 rounded-lg">
-								<svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
 								</svg>
@@ -70,7 +70,7 @@
 					<div class="flex-1 overflow-y-auto bg-gray-50">
 						<!-- Loading State -->
 						<div v-if="loading" class="flex flex-col items-center justify-center py-16">
-							<div class="animate-spin rounded-full h-12 w-12 border-b-3 border-blue-500 mb-4"></div>
+							<div class="animate-spin rounded-full h-12 w-12 border-b-3 border-red-500 mb-4"></div>
 							<p class="text-sm font-medium text-gray-600">{{ __('Loading settings...') }}</p>
 						</div>
 
@@ -139,7 +139,7 @@
 											/>
 											<div class="mt-3 p-3 bg-blue-100 rounded-md">
 												<div class="flex items-start gap-2">
-													<svg class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="icons.info"/>
 													</svg>
 													<TranslatedHTML 
@@ -191,7 +191,7 @@
 												<!-- Sync Status Info -->
 												<div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
 													<div class="flex items-start gap-2">
-														<svg class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="icons.info"/>
 														</svg>
 														<div class="text-xs text-blue-800 flex flex-col gap-1">

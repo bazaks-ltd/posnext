@@ -7,7 +7,7 @@
 		>
 			<div class="flex items-center gap-2.5">
 				<div class="p-1.5 bg-blue-50 rounded">
-					<component :is="getIcon(icon)" class="w-4 h-4 text-blue-600" />
+					<component :is="getIcon(icon)" class="w-4 h-4 text-red-500" />
 				</div>
 				<h2 class="text-base font-semibold text-gray-900">{{ title }}</h2>
 			</div>
@@ -23,7 +23,7 @@
 		<div v-else class="px-5 py-3 border-b border-gray-100">
 			<div class="flex items-center gap-2.5">
 				<div class="p-1.5 bg-blue-50 rounded">
-					<component :is="getIcon(icon)" class="w-4 h-4 text-blue-600" />
+					<component :is="getIcon(icon)" class="w-4 h-4 text-red-500" />
 				</div>
 				<h2 class="text-base font-semibold text-gray-900">{{ title }}</h2>
 			</div>

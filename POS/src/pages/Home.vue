@@ -5,7 +5,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center space-x-4">
-            <h1 class="text-xl font-semibold text-gray-900">{{ __('POS Next') }}</h1>
+            <h1 class="text-xl font-semibold text-gray-900">{{ __('BZKPOS') }}</h1>
 
             <!-- Shift Status Indicator -->
             <div v-if="hasOpenShift" class="flex items-center space-x-2 px-3 py-1 bg-green-100 rounded-full">
@@ -22,7 +22,7 @@
             </div>
 
             <div class="flex items-center space-x-2">
-              <div class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+              <div class="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center">
                 <span class="text-sm font-medium text-white">
                   {{ getUserInitials(session.user) }}
                 </span>
@@ -50,7 +50,7 @@
         <div class="border-4 border-dashed border-gray-200 rounded-lg min-h-96 p-8">
           <div class="text-center">
             <h2 class="text-2xl font-bold text-gray-900 mb-4">
-              {{ __('Welcome to POS Next!') }}
+              {{ __('Welcome to BZKPOS!') }}
             </h2>
             <p class="text-gray-600 mb-8">
               {{ __('Your point of sale system is ready to use.') }}
@@ -99,7 +99,7 @@
                     </Button>
                     <Button
                       variant="solid"
-                      theme="blue"
+                      theme="red"
                       @click="startSale"
                       class="flex-1"
                     >
@@ -123,7 +123,7 @@
 
                   <Button
                     variant="solid"
-                    theme="blue"
+                    theme="red"
                     @click="showOpenShiftDialog = true"
                     class="w-full"
                   >
@@ -136,7 +136,7 @@
               <div class="bg-white p-6 rounded-lg shadow">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">{{ __('System Test') }}</h3>
                 <Button
-                  theme="blue"
+                  theme="red"
                   variant="solid"
                   @click="ping.fetch"
                   :loading="ping.loading"
@@ -190,7 +190,7 @@
           </div>
 
           <p v-else class="text-sm text-gray-500">
-            {{ __('Are you sure you want to sign out of POS Next?') }}
+            {{ __('Are you sure you want to sign out of BZKPOS?') }}
           </p>
         </div>
       </template>
@@ -207,7 +207,7 @@
           </Button>
           <Button
             v-if="hasOpenShift"
-            theme="blue"
+            theme="red"
             variant="solid"
             @click="logoutWithCloseShift"
           >

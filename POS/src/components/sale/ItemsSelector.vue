@@ -8,7 +8,7 @@
 					:class="[
 						'flex items-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium whitespace-nowrap transition-[background-color,border-color] duration-75 touch-manipulation snap-start flex-shrink-0',
 						!selectedItemGroup
-							? 'bg-blue-50 text-blue-600 border-2 border-blue-500 shadow-sm'
+							? 'bg-red-50 text-red-500 border-2 border-red-500 shadow-sm'
 							: 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 active:bg-gray-100',
 					]"
 				>
@@ -24,7 +24,7 @@
 					:class="[
 						'flex items-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium whitespace-nowrap transition-[background-color,border-color] duration-75 touch-manipulation snap-start flex-shrink-0',
 						selectedItemGroup === group.item_group
-							? 'bg-blue-50 text-blue-600 border-2 border-blue-500 shadow-sm'
+							? 'bg-red-50 text-red-500 border-2 border-red-500 shadow-sm'
 							: 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 active:bg-gray-100',
 					]"
 				>
@@ -36,7 +36,7 @@
 		<!-- Cache Sync Indicator -->
 		<div v-if="cacheSyncing" class="px-1.5 sm:px-3 py-1 bg-blue-50 border-b border-blue-200">
 			<div class="flex items-center justify-center gap-2 text-[10px] sm:text-xs text-blue-700">
-				<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+				<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-red-500"></div>
 				<span>{{ __('Syncing catalog in background... {0} items cached', [cacheStats.items]) }}</span>
 			</div>
 		</div>
@@ -74,10 +74,10 @@
 						:class="[
 							'w-full text-[11px] sm:text-sm border rounded-lg px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-16 sm:pe-24 focus:outline-none transition-all',
 							autoAddEnabled
-								? 'border-blue-400 bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+								? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-500 focus:border-transparent'
 								: scannerEnabled
 								? 'border-green-400 bg-green-50 focus:ring-2 focus:ring-green-500 focus:border-transparent'
-								: 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+								: 'border-gray-300 focus:ring-2 focus:ring-red-500 focus:border-transparent'
 						]"
 						:aria-label="__('Search items')"
 					/>
@@ -153,7 +153,7 @@
 						:class="[
 							'p-1.5 sm:p-2 rounded-lg transition-[background-color,box-shadow] duration-75 touch-manipulation border',
 							sortBy
-								? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm'
+								? 'bg-red-50 border-red-400 text-red-700 shadow-sm'
 								: 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 active:bg-gray-100'
 						]"
 						:title="sortBy
@@ -217,7 +217,7 @@
 									<!-- Sort direction icon -->
 									<svg
 										class="w-5 h-5"
-										:class="sortBy === option.field ? 'text-blue-600' : 'text-gray-300'"
+										:class="sortBy === option.field ? 'text-red-500' : 'text-gray-300'"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
@@ -235,7 +235,7 @@
 		<!-- Initial Loading State - Only for first load -->
 		<div v-if="loading && !filteredItems" class="flex-1 flex items-center justify-center p-3">
 			<div class="text-center py-8">
-				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500 mx-auto"></div>
 				<p class="mt-3 text-xs text-gray-500">{{ __('Loading items...') }}</p>
 			</div>
 		</div>

@@ -11,7 +11,7 @@
 			:max="max"
 			:step="step"
 			@input="$emit('update:modelValue', parseFloat($event.target.value) || 0)"
-			class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white"
+			class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-transparent bg-white"
 		/>
 		<p v-if="description" class="text-xs text-gray-500 mt-0.5 leading-tight">
 			{{ description }}
