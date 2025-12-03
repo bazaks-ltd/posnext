@@ -35,11 +35,11 @@ export const SUPPORTED_LOCALES = {
 		countryCode: "us",
 		dir: "ltr",
 	},
-	ar: {
-		name: "Arabic",
-		nativeName: "العربية",
-		countryCode: "eg",
-		dir: "rtl",
+	fr: {
+		name: "French",
+		nativeName: "Français",
+		countryCode: "fr",
+		dir: "ltr",
 	}
 }
 

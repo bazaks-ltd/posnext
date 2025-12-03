@@ -59,7 +59,7 @@ def change_user_language(locale):
 	# Normalize locale to lowercase
 	locale = locale.lower()
 
-	allowed_locales = {'ar', 'en'}
+	allowed_locales = {'en', 'fr'}
 	if locale not in allowed_locales:
 		frappe.throw(f"Locale '{locale}' is not supported", frappe.ValidationError)
 
