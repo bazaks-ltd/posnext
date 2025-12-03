@@ -407,6 +407,7 @@
 								<input
 									:value="getBatchQtyForManagement(batch.batch_no)"
 									@input="(e) => updateBatchQtyManagement(batch, e.target.value)"
+									@blur="() => validateBatchQtyManagement(batch)"
 									type="number"
 									min="0"
 									:max="settingsStore.currentProfile?.allow_negative_stock ? null : batch.qty"
@@ -427,10 +428,13 @@
 									+
 								</button>
 							</div>
-							<!-- Validation Warning -->
-							<div v-if="isBatchQtyExceedingAvailable(batch, getBatchQtyForManagement(batch.batch_no))" class="mt-1 text-xs text-red-600">
-								{{ __('Exceeds available stock ({0})', [batch.qty]) }}
-							</div>
+						</div>
+						<!-- Warning if exceeds available qty -->
+						<div v-if="isBatchQtyExceedingAvailable(batch, getBatchQtyForManagement(batch.batch_no))" class="mt-2 flex items-center gap-1 text-xs text-red-600">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+							</svg>
+							<span>{{ __('Exceeds available quantity') }}</span>
 						</div>
 					</div>
 				</div>
@@ -977,15 +981,17 @@ function updateBatchQtyManagement(batch, value) {
 	if (qty <= 0) {
 		batchQtys.value.delete(batch.batch_no)
 	} else {
-		// Validate against available stock
-		const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
-		if (!allowNegativeStock && qty > batch.qty) {
-			// Cap at available quantity
-			batchQtys.value.set(batch.batch_no, batch.qty)
-			showWarning(__("Quantity cannot exceed available stock ({0})", [batch.qty]))
-		} else {
-			batchQtys.value.set(batch.batch_no, qty)
-		}
+		// Allow invalid quantities to be stored temporarily so error message can show
+		batchQtys.value.set(batch.batch_no, qty)
+	}
+}
+
+function validateBatchQtyManagement(batch) {
+	const currentQty = getBatchQtyForManagement(batch.batch_no)
+	const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
+	if (!allowNegativeStock && currentQty > batch.qty) {
+		// Auto-correct to max available when input loses focus
+		batchQtys.value.set(batch.batch_no, batch.qty)
 	}
 }
 
@@ -996,9 +1002,8 @@ function incrementBatchQtyManagement(batch) {
 	
 	if (currentQty < maxQty) {
 		updateBatchQtyManagement(batch, currentQty + 1)
-	} else if (!allowNegativeStock) {
-		showWarning(__("Cannot exceed available stock ({0})", [batch.qty]))
 	}
+	// Inline error message will be shown automatically if quantity exceeds available stock
 }
 
 function decrementBatchQtyManagement(batch) {
@@ -1036,17 +1041,11 @@ const hasInvalidBatchQuantities = computed(() => {
 
 async function confirmBatchManagement() {
 	// Validate all batch quantities before confirming
+	// Note: Invalid quantities are already prevented by disabled Confirm button and inline error messages
+	// This is an additional safety check
 	const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
-	if (!allowNegativeStock) {
-		for (const [batchNo, qty] of batchQtys.value.entries()) {
-			if (qty > 0) {
-				const batch = availableBatches.value.find(b => b.batch_no === batchNo)
-				if (batch && qty > batch.qty) {
-					showError(__("Batch {0}: Quantity ({1}) exceeds available stock ({2})", [batchNo, qty, batch.qty]))
-					return // Don't proceed if validation fails
-				}
-			}
-		}
+	if (!allowNegativeStock && hasInvalidBatchQuantities.value) {
+		return // Don't proceed if validation fails (user should see inline error messages)
 	}
 	
 	const selectedBatches = []
