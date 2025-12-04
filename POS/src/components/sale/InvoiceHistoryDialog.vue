@@ -107,6 +107,15 @@
 										</svg>
 									</button>
 									<button
+										@click="shareInvoice(invoice)"
+										class="p-1.5 hover:bg-purple-50 rounded transition-colors"
+										:title="__('Share')"
+									>
+										<svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+										</svg>
+									</button>
+									<button
 										v-if="invoice.docstatus === 1 && !invoice.is_return"
 										@click="createReturn(invoice)"
 										class="p-1.5 hover:bg-orange-50 rounded transition-colors"
@@ -136,6 +145,18 @@
 			</Button>
 		</template>
 	</Dialog>
+
+	<!-- Invoice Share Dialog -->
+	<InvoiceShareDialog
+		v-if="selectedInvoice"
+		v-model="showShareDialog"
+		:invoice-name="selectedInvoice.name"
+		:pos-profile="posProfile"
+		:customer-mobile="selectedInvoice.customer_mobile || ''"
+		:customer-email="selectedInvoice.customer_email || ''"
+		:customer-name="selectedInvoice.customer_name || ''"
+		@shared="handleInvoiceShared"
+	/>
 </template>
 
 <script setup>
@@ -144,8 +165,9 @@ import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
+import InvoiceShareDialog from "./InvoiceShareDialog.vue"
 
-const { showError } = useToast()
+const { showError, showSuccess } = useToast()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -168,6 +190,10 @@ const searchTerm = ref("")
 const page = ref(0)
 const pageSize = 20
 const hasMore = ref(true)
+
+// Invoice sharing state
+const showShareDialog = ref(false)
+const selectedInvoice = ref(null)
 
 // Create resource for loading invoices
 const invoicesResource = createResource({
@@ -263,6 +289,15 @@ function printInvoice(invoice) {
 function createReturn(invoice) {
 	emit("create-return", invoice)
 	show.value = false
+}
+
+function shareInvoice(invoice) {
+	selectedInvoice.value = invoice
+	showShareDialog.value = true
+}
+
+function handleInvoiceShared(data) {
+	showSuccess(__('Invoice shared via {0} successfully', [data.channel]))
 }
 
 function formatDateTime(date, time) {

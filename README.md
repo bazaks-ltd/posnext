@@ -113,6 +113,15 @@ POS Next is a **complete rewrite** of the ERPNext POS system, built from the gro
   - Auto-credit note generation
   - Stock adjustment
 
+- 📱 **Native Invoice Sharing**
+  - **WhatsApp**: Share invoices with PDF attachment via WhatsApp
+  - **SMS**: Send invoice details with payment link via SMS
+  - **Email**: Professional invoice emails with PDF attachment
+  - Auto-fill customer contact information
+  - Customizable message templates with placeholders
+  - Multi-channel support (enable one or all channels)
+  - Integrated throughout POS (after payment, invoice history, etc.)
+
 - 💼 **Shift Management**
   - Open/close shift workflow
   - Live shift timer in navbar

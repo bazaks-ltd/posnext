@@ -1,0 +1,112 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-01-15 00:00:00.000000",
+ "default_view": "Form",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "token",
+  "url",
+  "version",
+  "column_break_whatsapp",
+  "phone_id",
+  "business_id",
+  "app_id",
+  "webhook_verify_token"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "description": "Enable WhatsApp messaging"
+  },
+  {
+   "fieldname": "token",
+   "fieldtype": "Password",
+   "in_list_view": 1,
+   "label": "Access Token",
+   "reqd": 1,
+   "description": "WhatsApp Business API access token"
+  },
+  {
+   "description": "e.g. https://graph.facebook.com",
+   "fieldname": "url",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "API URL",
+   "reqd": 1,
+   "default": "https://graph.facebook.com"
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "API Version",
+   "reqd": 1,
+   "default": "v18.0",
+   "description": "e.g. v17.0, v18.0"
+  },
+  {
+   "fieldname": "column_break_whatsapp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "phone_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Phone Number ID",
+   "reqd": 1,
+   "description": "WhatsApp Business Phone Number ID"
+  },
+  {
+   "fieldname": "business_id",
+   "fieldtype": "Data",
+   "label": "Business Account ID",
+   "reqd": 1,
+   "description": "WhatsApp Business Account ID"
+  },
+  {
+   "fieldname": "app_id",
+   "fieldtype": "Data",
+   "label": "App ID",
+   "reqd": 1,
+   "description": "WhatsApp Business App ID"
+  },
+  {
+   "fieldname": "webhook_verify_token",
+   "fieldtype": "Data",
+   "label": "Webhook Verify Token",
+   "description": "Token for webhook verification (optional)"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-01-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "WhatsApp Setup",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
+

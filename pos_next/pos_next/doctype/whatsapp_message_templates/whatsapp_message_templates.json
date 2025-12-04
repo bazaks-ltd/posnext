@@ -1,0 +1,168 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:{template_name}-{language_code}",
+ "creation": "2025-01-15 00:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "actual_name",
+  "column_break_template",
+  "status",
+  "section_break_details",
+  "template",
+  "sample_values",
+  "field_names",
+  "column_break_meta",
+  "category",
+  "language",
+  "language_code",
+  "section_break_header",
+  "header_type",
+  "header",
+  "column_break_footer",
+  "footer"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "label": "Template Label",
+   "reqd": 1,
+   "unique": 1,
+   "description": "Display name for this template"
+  },
+  {
+   "fieldname": "actual_name",
+   "fieldtype": "Data",
+   "label": "Template Name",
+   "read_only": 1,
+   "description": "Actual template name used in WhatsApp API (auto-generated)"
+  },
+  {
+   "fieldname": "column_break_template",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Approved",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "\nPending\nApproved\nRejected",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Template Details"
+  },
+  {
+   "fieldname": "template",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Template Text",
+   "reqd": 1,
+   "description": "Message template text. Use {{1}}, {{2}}, etc. for parameters"
+  },
+  {
+   "fieldname": "sample_values",
+   "fieldtype": "Small Text",
+   "label": "Sample Values",
+   "description": "Comma-separated sample values for template parameters"
+  },
+  {
+   "fieldname": "field_names",
+   "fieldtype": "Small Text",
+   "label": "Field Names",
+   "description": "Comma-separated field names that map to template parameters"
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "\nTRANSACTIONAL\nMARKETING\nOTP\nUTILITY\nAUTHENTICATION",
+   "reqd": 1,
+   "default": "TRANSACTIONAL"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Language",
+   "options": "Language",
+   "reqd": 1
+  },
+  {
+   "fieldname": "language_code",
+   "fieldtype": "Data",
+   "label": "Language Code",
+   "read_only": 1,
+   "description": "Auto-generated from Language (e.g., en, en_US)"
+  },
+  {
+   "fieldname": "section_break_header",
+   "fieldtype": "Section Break",
+   "label": "Header & Footer"
+  },
+  {
+   "fieldname": "header_type",
+   "fieldtype": "Select",
+   "label": "Header Type",
+   "options": "\nTEXT\nDOCUMENT\nIMAGE",
+   "description": "Optional header type for template"
+  },
+  {
+   "depends_on": "eval:doc.header_type == 'TEXT'",
+   "fieldname": "header",
+   "fieldtype": "Data",
+   "label": "Header Text",
+   "description": "Header text (if header type is TEXT)"
+  },
+  {
+   "fieldname": "column_break_footer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "footer",
+   "fieldtype": "Data",
+   "label": "Footer",
+   "description": "Optional footer text"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-01-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "WhatsApp Message Templates",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
+
