@@ -5,7 +5,8 @@
 			<div class="w-16 flex-shrink-0 flex items-center justify-center">
 				<button
 					class="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-md flex-shrink-0  active:scale-95 transition-all p-1.5"
-					:aria-label="'BZKPOS'" :title="__('BZKPOS')">
+					:aria-label="'BZKPOS'" :title="__('BZKPOS')"
+					@click="navigateToApp">
 
 					<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 964 742.66669"
 						xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
@@ -264,6 +265,10 @@ function handleBlur(event) {
 			showCacheTooltip.value = false
 		}, 200)
 	}
+}
+
+function navigateToApp() {
+	window.location.href = '/app'
 }
 
 const props = defineProps({

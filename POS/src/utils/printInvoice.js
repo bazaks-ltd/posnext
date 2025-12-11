@@ -69,7 +69,7 @@ export async function printInvoice(
  * - Discounts: Displayed as separate line items with negative amounts
  * - Totals: Subtotal, tax, and grand total
  * - Payments: Payment methods and amounts, change, outstanding balance
- * - Footer: Thank you message and branding
+ * - Footer: Thank you message
  *
  * @param {Object} invoiceData - The invoice document data from ERPNext
  * @param {string} invoiceData.name - Invoice number
@@ -441,7 +441,9 @@ function printInvoiceCustom(invoiceData) {
 				<!-- Footer -->
 				<div class="footer">
 					<div style="margin-bottom: 5px;">${__('Thank you for your business!')}</div>
-					<div style="font-size: 10px;">Powered by <a href="https://nexus.brainwise.me" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 600;">BrainWise</a></div>
+					<div style="font-size: 10px; color: #6b7280; margin-top: 8px;">
+						Powered by <a href="https://bazaks.com" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Bazaks</a>
+					</div>
 				</div>
 			</div>
 
