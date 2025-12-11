@@ -254,8 +254,7 @@ def send_invoice_email(**kwargs):
         frappe.sendmail(
             recipients=[email],
             subject=subject,
-            message=message,
-            delayed=False,
+            message=message
         )
         
         # Return after email is sent
