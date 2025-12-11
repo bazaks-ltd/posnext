@@ -64,7 +64,7 @@ def send_invoice_whatsapp(**kwargs):
             doctype="Sales Invoice",
             name=invoice_no,
             print_format=print_format,
-            no_letterhead=1,
+            no_letterhead=0,
             lang="en",
             no_expiry=True
         )
@@ -427,7 +427,7 @@ def validate_contact_info(contact, channel):
 
 # Helper functions
 
-def get_protected_printview_url(doctype, name, print_format="Standard", no_letterhead=1, lang="en", expires_in_days=None, no_expiry=False):
+def get_protected_printview_url(doctype, name, print_format="Standard", no_letterhead=0, lang="en", expires_in_days=None, no_expiry=False):
     """
     Generate a protected printview URL with document share key.
     
