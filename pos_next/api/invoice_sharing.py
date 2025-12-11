@@ -234,7 +234,7 @@ def send_invoice_email(**kwargs):
             doctype="Sales Invoice",
             name=invoice_no,
             print_format=print_format,
-            no_letterhead=1,
+            no_letterhead=0,
             lang="en"
         )
         
