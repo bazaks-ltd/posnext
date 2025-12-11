@@ -15,8 +15,8 @@ from frappe.utils import get_url, cint
 @frappe.whitelist()
 def send_invoice_whatsapp(**kwargs):
     """
-    Send invoice via WhatsApp with PDF attachment (similar to KLiK PoS).
-    Accepts frontend payload and sends invoice WhatsApp message with PDF attachment.
+    Send invoice via WhatsApp with protected link (no expiry).
+    Accepts frontend payload and sends invoice WhatsApp message with protected printview link.
     """
     data = kwargs
     
@@ -59,17 +59,30 @@ def send_invoice_whatsapp(**kwargs):
         from frappe.utils import fmt_money
         invoice_amount = fmt_money(doc.rounded_total or doc.grand_total, currency=doc.currency)
         
+        # Generate protected printview URL (no expiry for WhatsApp)
+        protected_url = get_protected_printview_url(
+            doctype="Sales Invoice",
+            name=invoice_no,
+            print_format=print_format,
+            no_letterhead=1,
+            lang="en",
+            no_expiry=True
+        )
+        
+        # Add link to message
+        message_with_link = f"{message_text}\n\nView your invoice: {protected_url}"
+        
         # Use WhatsApp utility function (similar to KLiK PoS)
         from pos_next.utils.whatsapp_utils import send_whatsapp_message
         
-        # Send WhatsApp message with document attachment
+        # Send WhatsApp message with link (no PDF attachment)
         result = send_whatsapp_message(
             to_number=mobile,
             message_type="text",
-            message_content=message_text,
+            message_content=message_with_link,
             reference_doctype="Sales Invoice",
             reference_name=invoice_no,
-            attach_document=True,
+            attach_document=False,
         )
         
         if result.get("success"):
@@ -81,6 +94,7 @@ def send_invoice_whatsapp(**kwargs):
                 "print_format": print_format,
                 "message_id": result.get("message_id"),
                 "timestamp": frappe.utils.now(),
+                "url": protected_url,
             }
         else:
             frappe.throw(_("Failed to send WhatsApp message: {0}").format(result.get("error")))
@@ -172,8 +186,8 @@ Thank you!
 @frappe.whitelist()
 def send_invoice_email(**kwargs):
     """
-    Send invoice via Email with PDF attachment (similar to KLiK PoS).
-    Accepts frontend payload and sends invoice email with PDF attachment.
+    Send invoice via Email with protected link (similar to KLiK PoS).
+    Accepts frontend payload and sends invoice email with protected printview link.
     """
     data = kwargs
     
@@ -211,31 +225,37 @@ def send_invoice_email(**kwargs):
         else:
             print_format = "Standard"
         
-        # Generate PDF
-        pdf_data = frappe.get_print("Sales Invoice", doc.name, print_format=print_format, as_pdf=True)
-        
         # Format invoice amount
         from frappe.utils import fmt_money
         invoice_amount = fmt_money(doc.rounded_total or doc.grand_total, currency=doc.currency)
         
-        # Create email subject and message
+        # Generate protected printview URL (with default expiry, typically 90 days)
+        protected_url = get_protected_printview_url(
+            doctype="Sales Invoice",
+            name=invoice_no,
+            print_format=print_format,
+            no_letterhead=1,
+            lang="en"
+        )
+        
+        # Create email subject and message with link
         subject = _("Invoice {0} from {1}").format(doc.name, frappe.defaults.get_user_default('Company'))
         message = f"""
 			<p>Dear {customer_name or 'Customer'},</p>
-			<p>Please find attached your invoice <b>{doc.name}</b>.</p>
+			<p>Please find your invoice <b>{doc.name}</b> at the link below.</p>
 			<p>The total amount due is <b>{invoice_amount}</b>.</p>
+			<p><a href="{protected_url}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0;">View Invoice</a></p>
+			<p>Or copy this link: <br><a href="{protected_url}">{protected_url}</a></p>
 			<p>Thank you for your business.</p>
 			<br>
 		"""
         
-        attachments = [{"fname": f"{doc.name}.pdf", "fcontent": pdf_data}]
-        
-        # Send email synchronously (blocking) - not queued
+        # Send email synchronously (blocking) - not queued, no attachments
         frappe.sendmail(
             recipients=[email],
             subject=subject,
             message=message,
-            attachments=attachments,
+            delayed=False,
         )
         
         # Return after email is sent
@@ -247,6 +267,7 @@ def send_invoice_email(**kwargs):
             "print_format": print_format,
             "timestamp": frappe.utils.now(),
             "message": _("Email sent successfully"),
+            "url": protected_url,
         }
         
     except Exception as e:
@@ -349,66 +370,6 @@ def get_sharing_options(pos_profile, invoice_name=None):
 
 
 @frappe.whitelist()
-def download_invoice_pdf(invoice_name, print_format=None, pos_profile=None):
-    """
-    Download invoice as PDF file.
-    
-    Args:
-        invoice_name: Name of the Sales Invoice
-        print_format: Optional print format (defaults to POS Profile setting or "Standard")
-        pos_profile: Optional POS Profile name to get print format from
-        
-    Returns:
-        PDF file download response
-    """
-    try:
-        if not invoice_name:
-            frappe.throw(_("Invoice name is required"))
-        
-        # Validate invoice exists
-        if not frappe.db.exists("Sales Invoice", invoice_name):
-            frappe.throw(_("Invoice {0} not found").format(invoice_name))
-        
-        doc = frappe.get_doc("Sales Invoice", invoice_name)
-        
-        # Get print format from POS Profile if not provided
-        if not print_format and pos_profile:
-            print_format = frappe.db.get_value(
-                "POS Profile",
-                pos_profile,
-                "custom_default_print_format"
-            ) or frappe.db.get_value(
-                "POS Profile",
-                pos_profile,
-                "print_format"
-            )
-        
-        # Default to Standard if still no format
-        if not print_format:
-            print_format = "Standard"
-        
-        # Generate PDF using Frappe's built-in function
-        from frappe.utils.print_format import download_pdf
-        
-        # This will set frappe.local.response for file download
-        download_pdf(
-            doctype="Sales Invoice",
-            name=invoice_name,
-            format=print_format,
-            doc=doc
-        )
-        
-        return {
-            "status": "success",
-            "message": _("PDF download initiated")
-        }
-        
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Download Invoice PDF Failed")
-        frappe.throw(_("Failed to download invoice PDF: {0}").format(str(e)))
-
-
-@frappe.whitelist()
 def validate_contact_info(contact, channel):
     """
     Validate contact information format.
@@ -467,4 +428,43 @@ def validate_contact_info(contact, channel):
 
 # Helper functions
 
+def get_protected_printview_url(doctype, name, print_format="Standard", no_letterhead=1, lang="en", expires_in_days=None, no_expiry=False):
+    """
+    Generate a protected printview URL with document share key.
+    
+    Args:
+        doctype: Document type (e.g., "Sales Invoice")
+        name: Document name
+        print_format: Print format name (default: "Standard")
+        no_letterhead: Whether to exclude letterhead (default: 1)
+        lang: Language code (default: "en")
+        expires_in_days: Number of days until expiry (None for default, typically 90 days)
+        no_expiry: If True, key never expires (default: False)
+        
+    Returns:
+        str: Full protected printview URL with share key
+    """
+    try:
+        doc = frappe.get_doc(doctype, name)
+        
+        # Generate share key (no expiry if requested)
+        if no_expiry:
+            key = doc.get_document_share_key(no_expiry=True)
+        elif expires_in_days:
+            expires_on = frappe.utils.add_days(None, expires_in_days)
+            key = doc.get_document_share_key(expires_on=expires_on)
+        else:
+            # Use default expiry (typically 90 days)
+            key = doc.get_document_share_key()
+        
+        frappe.db.commit()
+        
+        # Build printview URL
+        base_url = get_url()
+        url = f"{base_url}/printview?doctype={doctype}&name={name}&format={print_format}&no_letterhead={no_letterhead}&_lang={lang}&key={key}"
+        
+        return url
+    except Exception as e:
+        frappe.log_error(f"Error generating protected printview URL: {str(e)}", "Invoice Sharing")
+        raise
 

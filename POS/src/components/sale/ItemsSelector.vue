@@ -299,12 +299,12 @@
 								'text-[10px] sm:text-xs font-bold',
 								'border-2 border-white cursor-pointer',
 								'hover:scale-110 hover:shadow-xl transition-all duration-200',
-								getStockStatus(item.actual_qty ?? item.stock_qty ?? 0).color,
-								getStockStatus(item.actual_qty ?? item.stock_qty ?? 0).textColor
+								getStockStatus(getDisplayStock(item)).color,
+								getStockStatus(getDisplayStock(item)).textColor
 							]"
 							:title="__('Click to view availability in other warehouses')"
 						>
-							{{ Math.floor(item.actual_qty ?? item.stock_qty ?? 0) }}
+							{{ Math.floor(getDisplayStock(item)) }}
 						</div>
 
 						<!-- Item Image -->
@@ -312,7 +312,7 @@
 							<!-- Image with conditional blur on hover -->
 							<div :class="[
 								'w-full h-full transition-all duration-300',
-								(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0 ? 'group-hover:blur-sm group-hover:brightness-75' : ''
+								(item.is_stock_item || item.is_bundle) && getDisplayStock(item) <= 0 ? 'group-hover:blur-sm group-hover:brightness-75' : ''
 							]">
 								<LazyImage
 									v-if="item.image"
@@ -357,7 +357,7 @@
 
 							<!-- Warehouse Availability Info Icon - Minimal centered overlay that appears on hover for out of stock items -->
 							<button
-								v-if="(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0"
+								v-if="(item.is_stock_item || item.is_bundle) && getDisplayStock(item) <= 0"
 								@click.stop="showWarehouseAvailability(item)"
 								class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10"
 								:title="__('Check availability in other warehouses')"
@@ -558,12 +558,12 @@
 										'inline-block px-1.5 sm:px-3 py-0.5 sm:py-1.5 rounded-md shadow-sm',
 										'text-[10px] sm:text-sm font-bold cursor-pointer',
 										'hover:scale-105 hover:shadow-md transition-all duration-200',
-										getStockStatus(item.actual_qty ?? item.stock_qty ?? 0).color,
-										getStockStatus(item.actual_qty ?? item.stock_qty ?? 0).textColor
+										getStockStatus(getDisplayStock(item)).color,
+										getStockStatus(getDisplayStock(item)).textColor
 									]"
 									:title="__('Click to view availability in other warehouses')"
 								>
-									{{ Math.floor(item.actual_qty ?? item.stock_qty ?? 0) }}
+									{{ Math.floor(getDisplayStock(item)) }}
 								</button>
 								<span
 									v-else
@@ -708,6 +708,7 @@ import LazyImage from "@/components/common/LazyImage.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
 import { useItemSearchStore } from "@/stores/itemSearch"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { useStockStore } from "@/stores/stock"
 import { useStock } from "@/composables/useStock"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { useToast } from "@/composables/useToast"
@@ -739,8 +740,9 @@ const { getStockStatus } = useStock()
 const settingsStore = usePOSSettingsStore()
 const { showError, showWarning } = useToast()
 
-// Use Pinia store
+// Use Pinia stores
 const itemStore = useItemSearchStore()
+const stockStore = useStockStore()
 const {
 	filteredItems,
 	searchTerm,
@@ -754,6 +756,50 @@ const {
 	sortBy,
 	sortOrder,
 } = storeToRefs(itemStore)
+
+// Helper function to get display stock for an item (accounts for reservations)
+function getDisplayStock(item) {
+	if (!item || (!item.is_stock_item && !item.is_bundle)) {
+		return 0
+	}
+	
+	// For template items with variants, we need to show total stock of ALL variants
+	// The template item's actual_qty from the API represents the sum of all variant stock
+	// We subtract reservations for variants that are in cart
+	if (item.has_variants) {
+		// Find variants of this template that are in the cart
+		const templateVariantsInCart = props.cartItems?.filter(cartItem => 
+			(cartItem.variant_of === item.item_code) || 
+			(cartItem.template_item === item.item_code)
+		) || []
+		
+		// Use the template item's actual_qty as the base (total stock of all variants from API)
+		// Also check stock store in case it has been updated
+		const templateStockFromStore = stockStore.server.get(item.item_code)?.qty
+		const templateTotalStock = templateStockFromStore ?? item.actual_qty ?? item.stock_qty ?? 0
+		
+		// Calculate total reserved quantity for variants in cart
+		// Reservations are tracked by variant item_code in the stock store
+		let totalReserved = 0
+		for (const variantInCart of templateVariantsInCart) {
+			if (variantInCart && variantInCart.item_code) {
+				const reserved = stockStore.reserved.get(variantInCart.item_code) || 0
+				totalReserved += Number(reserved) || 0
+			}
+		}
+		
+		// Return total variant stock minus reservations
+		// This gives us the available stock across all variants
+		const result = templateTotalStock - totalReserved
+		// Ensure we don't return negative if there's an issue, but allow it for negative stock scenarios
+		return result
+	}
+	
+	// For regular items or variants, use stock store's display stock which accounts for reservations
+	// Fallback to item's actual_qty if stock store doesn't have it yet
+	const displayStock = stockStore.getDisplayStock(item.item_code)
+	return displayStock !== undefined ? displayStock : (item.actual_qty ?? item.stock_qty ?? 0)
+}
 
 // Local state
 const viewMode = ref("grid")
@@ -1088,7 +1134,7 @@ function handleItemClick(itemCode) {
 	// - Batch/serial items - they have their own validation in the dialog
 	// - Item templates (has_variants) - variants have their own stock, template shouldn't be checked
 	// Check stock for stock items AND Product Bundles (bundles now have calculated stock)
-	const qty = Math.floor(item.actual_qty ?? item.stock_qty ?? 0)
+	const qty = Math.floor(getDisplayStock(item))
 	if ((item.is_stock_item || item.is_bundle) && !item.has_variants && !item.has_serial_no && !item.has_batch_no && qty <= 0 && settingsStore.shouldEnforceStockValidation()) {
 		showError(item.is_bundle 
 			? __('"{0}" cannot be added to cart. Bundle is out of stock. Allow Negative Stock is disabled.', [item.item_name])

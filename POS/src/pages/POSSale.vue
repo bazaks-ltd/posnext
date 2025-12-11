@@ -471,6 +471,7 @@
 			:customer-email="lastInvoiceCustomer?.email_id || ''"
 			:customer-name="lastInvoiceCustomer?.customer_name || lastInvoiceCustomer?.name || ''"
 			:initial-channel="initialShareChannel"
+			:initial-sharing-options="sharingOptions"
 			@shared="handleInvoiceShared"
 		/>
 
@@ -732,7 +733,12 @@
 		/>
 
 		<!-- Footer -->
-		<POSFooter />
+		<div class="fixed bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-200 px-4 py-2 text-center" style="z-index: 10;">
+			<p class="text-xs text-gray-600">
+				Powered by <a href="https://bazaks.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 font-semibold no-underline hover:underline">Bazaks</a>
+			</p>
+		</div>
+
 		</template>
 	</div>
 </template>
@@ -742,7 +748,6 @@ import ShiftClosingDialog from "@/components/ShiftClosingDialog.vue"
 import ShiftOpeningDialog from "@/components/ShiftOpeningDialog.vue"
 import ClearCacheOverlay from "@/components/common/ClearCacheOverlay.vue"
 import LoadingSpinner from "@/components/common/LoadingSpinner.vue"
-import POSFooter from "@/components/common/POSFooter.vue"
 import ManagementSlider from "@/components/pos/ManagementSlider.vue"
 import POSHeader from "@/components/pos/POSHeader.vue"
 import BatchSerialDialog from "@/components/sale/BatchSerialDialog.vue"
@@ -787,6 +792,7 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSShiftStore } from "@/stores/posShift"
 import { usePOSSyncStore } from "@/stores/posSync"
 import { usePOSUIStore } from "@/stores/posUI"
+import { useInvoiceSharingStore } from "@/stores/invoiceSharing"
 import { logger } from "@/utils/logger"
 
 // Initialize stores
@@ -798,6 +804,7 @@ const draftsStore = usePOSDraftsStore()
 const posSettingsStore = usePOSSettingsStore()
 const itemStore = useItemSearchStore()
 const stockStore = useStockStore()
+const sharingStore = useInvoiceSharingStore()
 // Note: settingsStore is an alias to posSettingsStore (same Pinia store singleton)
 const settingsStore = posSettingsStore
 
@@ -866,11 +873,7 @@ const selectedInvoiceForView = ref(null)
 
 // Invoice Sharing
 const showInvoiceShareDialog = ref(false)
-const sharingOptions = ref({
-	whatsapp: { enabled: false },
-	sms: { enabled: false },
-	email: { enabled: false }
-})
+// Use Pinia store directly instead of local ref
 const lastInvoiceCustomer = ref(null)
 const initialShareChannel = ref(null)
 
@@ -1067,6 +1070,9 @@ onMounted(async () => {
 	// Store cleanup function for unmount
 	onUnmounted(cleanup)
 
+	// Initialize invoice sharing store (loads from localStorage)
+	sharingStore.initialize()
+
 	try {
 		// Start timers for current time and shift duration
 		shiftStore.startTimers()
@@ -1094,6 +1100,11 @@ onMounted(async () => {
 
 				// Set default customer from POS Profile if configured
 				await cartStore.setDefaultCustomer()
+
+				// Load sharing options once when shift opens (only if not already cached)
+				if (shiftStore.profileName) {
+					await loadSharingOptionsOnce(shiftStore.profileName)
+				}
 
 				// Note: POS Settings already loaded above via posSettingsStore.loadSettings()
 				// No need to call again since settingsStore is an alias to posSettingsStore
@@ -1126,9 +1137,14 @@ onMounted(async () => {
 
 watch(
 	() => shiftStore.hasOpenShift,
-	(value) => {
+	async (value) => {
 		if (value && typeof window !== "undefined") {
 			updateLayoutBounds()
+			
+			// Load sharing options when shift opens (only if not already cached)
+			if (shiftStore.profileName) {
+				await loadSharingOptionsOnce(shiftStore.profileName)
+			}
 		}
 	},
 )
@@ -1346,9 +1362,9 @@ async function handleStockSyncComplete(event) {
 	// Now we need to refresh the Pinia stock store from IndexedDB or server
 	if (updated > 0) {
 		// Trigger a refresh of displayed stock
-		// Note: refresh() now preserves reservations internally
+		// Pass current cart items to ensure reservations stay in sync (important for variants)
 		try {
-			await stockStore.refresh(null, shiftStore.profileWarehouse)
+			await stockStore.refresh(null, shiftStore.profileWarehouse, cartStore.invoiceItems)
 		} catch (err) {
 			log.error('Failed to refresh stock after background sync:', err)
 		}
@@ -1618,7 +1634,7 @@ async function handlePaymentCompleted(paymentData) {
 
 			showSuccess(__("Invoice saved offline. Will sync when online"))
 		} else {
-			// Get item codes from cart before clearing
+			// Get item codes from cart before clearing (important for variants which have their own item_code)
 			const soldItemCodes = cartStore.invoiceItems.map(item => item.item_code)
 
 			const result = await cartStore.submitInvoice()
@@ -1634,7 +1650,9 @@ async function handlePaymentCompleted(paymentData) {
 				previousCartHash = ""
 
 				// Refresh stock - Direct API (50-200ms), no Socket.IO lag!
-				await stockStore.refresh(soldItemCodes, shiftStore.profileWarehouse)
+				// Pass empty array for cart items since cart is now cleared
+				// This ensures reservations are cleared for sold items (especially variants)
+				await stockStore.refresh(soldItemCodes, shiftStore.profileWarehouse, [])
 
 				if (shiftStore.autoPrintEnabled) {
 					try {
@@ -1700,6 +1718,13 @@ async function handleOptionSelected(option) {
 	try {
 		if (option.type === "variant") {
 			const variant = option.data
+			// Set variant_of to the template item code so we can track which template this variant belongs to
+			// This is needed for the badge to update correctly on template items
+			const templateItemCode = cartStore.pendingItem?.item_code
+			if (templateItemCode && !variant.variant_of) {
+				variant.variant_of = templateItemCode
+				variant.template_item = templateItemCode
+			}
 
 			if (variant.item_uoms && variant.item_uoms.length > 0) {
 				cartStore.setPendingItem(variant, cartStore.pendingItemQty, "uom")
@@ -1833,35 +1858,67 @@ function handleInvoiceShared(data) {
 	initialShareChannel.value = null
 }
 
-// Computed property for sharing channels
+// Computed property for sharing channels - uses Pinia store
 const hasSharingChannels = computed(() => {
-	return (
-		sharingOptions.value.whatsapp?.enabled ||
-		sharingOptions.value.sms?.enabled ||
-		sharingOptions.value.email?.enabled
-	)
+	if (!shiftStore.profileName) return false
+	return sharingStore.hasEnabledChannels(shiftStore.profileName)
 })
 
-// Load sharing options when success dialog opens
-watch(() => uiStore.showSuccessDialog, async (isOpen) => {
-	if (isOpen && uiStore.lastInvoiceName) {
-		console.log('[POSSale] Success dialog opened, loading sharing options for:', uiStore.lastInvoiceName)
-		await loadSharingOptionsForInvoice(uiStore.lastInvoiceName)
-		console.log('[POSSale] Sharing options loaded:', sharingOptions.value)
-		console.log('[POSSale] Has sharing channels:', hasSharingChannels.value)
-	} else if (!isOpen) {
-		// Reset sharing options when dialog closes
-		sharingOptions.value = {
+// Computed property for sharing options - uses Pinia store
+const sharingOptions = computed(() => {
+	if (!shiftStore.profileName) {
+		return {
 			whatsapp: { enabled: false },
 			sms: { enabled: false },
 			email: { enabled: false }
 		}
 	}
+	return sharingStore.getSharingOptions(shiftStore.profileName)
+})
+
+// Load sharing options when success dialog opens
+watch(() => uiStore.showSuccessDialog, async (isOpen) => {
+	if (isOpen && uiStore.lastInvoiceName) {
+		console.log('[POSSale] Success dialog opened, loading customer info for invoice:', uiStore.lastInvoiceName)
+		await loadSharingOptionsForInvoice(uiStore.lastInvoiceName)
+		console.log('[POSSale] Has sharing channels:', hasSharingChannels.value)
+	}
 }, { immediate: false })
 
+/**
+ * Load sharing options once when page loads or refresh is clicked
+ * Only calls API if not already cached in Pinia store
+ */
+async function loadSharingOptionsOnce(posProfile) {
+	if (!posProfile) {
+		console.warn('[POSSale] No POS Profile name available for loading sharing options')
+		return
+	}
+	
+	// Check if already cached in Pinia store
+	const hasCachedOptions = posProfile in sharingStore.sharingOptionsByProfile
+	if (hasCachedOptions) {
+		log.info('[POSSale] Sharing options already cached for profile:', posProfile)
+		return
+	}
+	
+	try {
+		log.info('[POSSale] Loading sharing options for profile:', posProfile)
+		// This will call API and cache in Pinia store
+		await getSharingOptions(posProfile)
+		log.info('[POSSale] Sharing options loaded and cached in Pinia store')
+	} catch (error) {
+		log.error('[POSSale] Failed to load sharing options:', error)
+	}
+}
+
+/**
+ * Load customer-specific info for an invoice
+ * Uses cached sharing options from Pinia, only fetches customer info
+ */
 async function loadSharingOptionsForInvoice(invoiceName) {
 	try {
-		console.log('[POSSale] Loading sharing options for invoice:', invoiceName)
+		console.log('[POSSale] Loading customer info for invoice:', invoiceName)
 		console.log('[POSSale] POS Profile:', shiftStore.profileName)
 		
 		if (!shiftStore.profileName) {
@@ -1869,41 +1926,25 @@ async function loadSharingOptionsForInvoice(invoiceName) {
 			return
 		}
 		
-		const options = await getSharingOptions(shiftStore.profileName, invoiceName)
-		console.log('[POSSale] Received options from API:', JSON.stringify(options, null, 2))
+		// Ensure sharing options are loaded (will use cache if available)
+		await loadSharingOptionsOnce(shiftStore.profileName)
 		
-		if (options) {
-			sharingOptions.value = {
-				whatsapp: { enabled: Boolean(options.whatsapp?.enabled), template: options.whatsapp?.template },
-				sms: { enabled: Boolean(options.sms?.enabled), template: options.sms?.template },
-				email: { enabled: Boolean(options.email?.enabled), template: options.email?.template }
-			}
+		// Fetch customer-specific info if invoice is provided
+		// getSharingOptions will use cache for sharing config but fetch customer info
+		if (invoiceName) {
+			const options = await getSharingOptions(shiftStore.profileName, invoiceName)
+			console.log('[POSSale] Received customer info:', options?.customer)
 			
 			// Store customer data from API response
-			if (options.customer) {
+			if (options?.customer) {
 				lastInvoiceCustomer.value = options.customer
-			}
-		} else {
-			sharingOptions.value = {
-				whatsapp: { enabled: false },
-				sms: { enabled: false },
-				email: { enabled: false }
 			}
 		}
 		
-		console.log('[POSSale] Updated sharingOptions.value:', JSON.stringify(sharingOptions.value, null, 2))
-		console.log('[POSSale] WhatsApp enabled:', sharingOptions.value.whatsapp?.enabled)
-		console.log('[POSSale] SMS enabled:', sharingOptions.value.sms?.enabled)
-		console.log('[POSSale] Email enabled:', sharingOptions.value.email?.enabled)
-		console.log('[POSSale] hasSharingChannels computed:', hasSharingChannels.value)
+		console.log('[POSSale] Has sharing channels:', hasSharingChannels.value)
 	} catch (error) {
-		console.error('[POSSale] Failed to load sharing options:', error)
+		console.error('[POSSale] Failed to load customer info:', error)
 		console.error('[POSSale] Error details:', error.message, error.stack)
-		sharingOptions.value = {
-			whatsapp: { enabled: false },
-			sms: { enabled: false },
-			email: { enabled: false }
-		}
 	}
 }
 
@@ -1981,19 +2022,50 @@ function handleCustomerCreated(newCustomer) {
 
 async function handleRefresh() {
 	try {
-		log.info('Manual stock refresh initiated')
+		log.info('Manual refresh initiated - clearing cache and reloading')
+
+		// Import the clear functions from db.js
+		const { clearCachedData, clearBrowserCache } = await import('@/utils/offline/db.js')
+
+		// Clear IndexedDB cache (preserves invoices, drafts, and settings by default)
+		await clearCachedData({
+			preserveInvoices: true,
+			preserveDrafts: true,
+			preserveSettings: true
+		})
+
+		// Clear browser localStorage and sessionStorage
+		clearBrowserCache()
+		
+		// Clear sharing options from Pinia store so they reload on page refresh
+		if (shiftStore.profileName) {
+			sharingStore.clearSharingOptions(shiftStore.profileName)
+			log.info('Cleared sharing options cache for refresh')
+		}
+
+		// Invalidate item store cache
+		itemStore.invalidateCache()
+
+		// Reload items to fetch fresh data
+		if (itemsSelectorRef.value) {
+			await itemsSelectorRef.value.loadItems()
+		}
 
 		// Refresh stock from server
-		// Note: refresh() now preserves reservations internally
-		await stockStore.refresh(null, shiftStore.profileWarehouse)
+		// Pass current cart items to ensure reservations stay in sync (important for variants)
+		await stockStore.refresh(null, shiftStore.profileWarehouse, cartStore.invoiceItems)
 
 		// Refresh cache stats to update "Last Updated" timestamp
 		const stats = await offlineWorker.getCacheStats()
 		itemStore.cacheStats = stats
 
-		log.success('Manual stock refresh completed')
+		// Reload the page to ensure everything is fresh
+		window.location.reload()
+
+		log.success('Manual refresh completed - page reloading')
 	} catch (error) {
-		log.error('Manual stock refresh failed:', error)
+		log.error('Manual refresh failed:', error)
+		showError(__("Failed to refresh. Please try again."))
 	}
 }
 
@@ -2034,7 +2106,8 @@ async function confirmClearCache() {
 			}
 
 			// Refresh stock
-			await stockStore.refresh(null, shiftStore.profileWarehouse)
+			// Pass current cart items to ensure reservations stay in sync (important for variants)
+			await stockStore.refresh(null, shiftStore.profileWarehouse, cartStore.invoiceItems)
 
 			// Update cache stats
 			const stats = await offlineWorker.getCacheStats()

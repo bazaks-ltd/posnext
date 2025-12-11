@@ -7,13 +7,8 @@ import { defineStore } from 'pinia'
 
 export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 	state: () => ({
-		// Available sharing channels from POS Profile
-		sharingOptions: {
-			whatsapp: { enabled: false, template: null },
-			sms: { enabled: false, template: null },
-			email: { enabled: false, template: null },
-			print_format: null
-		},
+		// Available sharing channels from POS Profile (keyed by profile name)
+		sharingOptionsByProfile: {},
 		
 		// Sharing history (last 50 shares)
 		history: [],
@@ -27,24 +22,40 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 
 	getters: {
 		/**
-		 * Check if any sharing channel is enabled
+		 * Get sharing options for a specific POS profile
 		 */
-		hasEnabledChannels(state) {
+		getSharingOptions: (state) => (posProfile) => {
+			return state.sharingOptionsByProfile[posProfile] || {
+				whatsapp: { enabled: false, template: null },
+				sms: { enabled: false, template: null },
+				email: { enabled: false, template: null },
+				print_format: null
+			}
+		},
+
+		/**
+		 * Check if any sharing channel is enabled for a POS profile
+		 */
+		hasEnabledChannels: (state) => (posProfile) => {
+			const options = state.sharingOptionsByProfile[posProfile]
+			if (!options) return false
 			return (
-				state.sharingOptions.whatsapp?.enabled ||
-				state.sharingOptions.sms?.enabled ||
-				state.sharingOptions.email?.enabled
+				options.whatsapp?.enabled ||
+				options.sms?.enabled ||
+				options.email?.enabled
 			)
 		},
 
 		/**
-		 * Get enabled channels list
+		 * Get enabled channels list for a POS profile
 		 */
-		enabledChannels(state) {
+		enabledChannels: (state) => (posProfile) => {
+			const options = state.sharingOptionsByProfile[posProfile]
+			if (!options) return []
 			const channels = []
-			if (state.sharingOptions.whatsapp?.enabled) channels.push('whatsapp')
-			if (state.sharingOptions.sms?.enabled) channels.push('sms')
-			if (state.sharingOptions.email?.enabled) channels.push('email')
+			if (options.whatsapp?.enabled) channels.push('whatsapp')
+			if (options.sms?.enabled) channels.push('sms')
+			if (options.email?.enabled) channels.push('email')
 			return channels
 		},
 
@@ -65,15 +76,23 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 
 	actions: {
 		/**
-		 * Set sharing options from POS Profile
+		 * Set sharing options from POS Profile (keyed by profile name)
 		 */
-		setSharingOptions(options) {
-			this.sharingOptions = {
+		setSharingOptions(posProfile, options) {
+			if (!posProfile) {
+				console.warn('Cannot set sharing options: POS Profile name is required')
+				return
+			}
+			
+			this.sharingOptionsByProfile[posProfile] = {
 				whatsapp: options.whatsapp || { enabled: false },
 				sms: options.sms || { enabled: false },
 				email: options.email || { enabled: false },
 				print_format: options.print_format || null
 			}
+			
+			// Persist to localStorage
+			this._saveSharingOptions()
 		},
 
 		/**
@@ -175,6 +194,16 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 					console.error('Failed to load contact cache:', e)
 				}
 			}
+			
+			// Load sharing options from localStorage
+			const savedOptions = localStorage.getItem('pos_invoice_sharing_options')
+			if (savedOptions) {
+				try {
+					this.sharingOptionsByProfile = JSON.parse(savedOptions)
+				} catch (e) {
+					console.error('Failed to load sharing options:', e)
+				}
+			}
 		},
 
 		/**
@@ -196,6 +225,27 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 				localStorage.setItem('pos_invoice_sharing_contacts', JSON.stringify(this.contactCache))
 			} catch (e) {
 				console.error('Failed to save contact cache:', e)
+			}
+		},
+
+		/**
+		 * Clear sharing options for a specific POS profile
+		 */
+		clearSharingOptions(posProfile) {
+			if (posProfile && posProfile in this.sharingOptionsByProfile) {
+				delete this.sharingOptionsByProfile[posProfile]
+				this._saveSharingOptions()
+			}
+		},
+
+		/**
+		 * Save sharing options to localStorage
+		 */
+		_saveSharingOptions() {
+			try {
+				localStorage.setItem('pos_invoice_sharing_options', JSON.stringify(this.sharingOptionsByProfile))
+			} catch (e) {
+				console.error('Failed to save sharing options:', e)
 			}
 		}
 	}

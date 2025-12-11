@@ -82,24 +82,36 @@ export const useStockStore = defineStore('stock', () => {
 	// Called by: POSSale.vue:770 (realtime), various refresh flows
 	// Does NOT clear reservations - only updates server stock
 	// Pinia reactivity automatically recalculates display stock
-	const update = (stockUpdates) => stockUpdates?.forEach(stockUpdate =>
-		server.value.set(stockUpdate.item_code, {
-			qty: stockUpdate.actual_qty ?? stockUpdate.stock_qty,
-			warehouse: stockUpdate.warehouse || warehouse.value,
-			ts: Date.now()
-		})
-	)
+	const update = (stockUpdates) => stockUpdates?.forEach(stockUpdate => {
+		// Only update if we have a valid item_code
+		if (!stockUpdate?.item_code) return
+		
+		// Get the quantity - prefer actual_qty, fallback to stock_qty
+		// Only update if we have a valid number (not null/undefined)
+		const qty = stockUpdate.actual_qty ?? stockUpdate.stock_qty
+		
+		// Only update if qty is a valid number (including 0, but not null/undefined)
+		if (qty !== null && qty !== undefined && !isNaN(Number(qty))) {
+			server.value.set(stockUpdate.item_code, {
+				qty: Number(qty),
+				warehouse: stockUpdate.warehouse || warehouse.value,
+				ts: Date.now()
+			})
+		}
+		// If qty is null/undefined, preserve existing stock data (don't overwrite with invalid data)
+	})
 
 	// Refresh stock from server (direct API call)
 	// Called after invoice submission, manual refresh, or warehouse change
 	// Snapshots reservations before fetching to prevent UI flicker
 	// This is the fallback when realtime Socket.IO is down
-	const refresh = async (itemCodes, targetWarehouse) => {
+	const refresh = async (itemCodes, targetWarehouse, currentCartItems = null) => {
 		if (!targetWarehouse && !warehouse.value) return
 
 		refreshing.value = true
 
 		// Snapshot current reservations to restore after fetch
+		// But if currentCartItems is provided, we'll use that instead
 		const reservationSnapshot = new Map(reserved.value)
 
 		try {
@@ -120,14 +132,25 @@ export const useStockStore = defineStore('stock', () => {
 			// Update IndexedDB and wait for timestamp update
 			await offlineWorker.updateStockQuantities(stockData).catch(() => {})
 
-			// Restore reservations after fetch completes
-			reserved.value = reservationSnapshot
+			// Update reservations based on current cart state if provided
+			// This ensures reservations are always in sync with the actual cart
+			// This is especially important for variants which have their own item_code
+			if (currentCartItems !== null) {
+				reserve(currentCartItems)
+			} else {
+				// Fallback: restore snapshot if no current cart provided
+				reserved.value = reservationSnapshot
+			}
 
 			log.success(`Refreshed ${stockData.length} items`)
 		} catch (error) {
 			log.error('Refresh failed', error)
 			// Restore reservations even on error
-			reserved.value = reservationSnapshot
+			if (currentCartItems !== null) {
+				reserve(currentCartItems)
+			} else {
+				reserved.value = reservationSnapshot
+			}
 		} finally {
 			refreshing.value = false
 		}

@@ -232,6 +232,9 @@ export function useInvoice() {
 				// Add item_group and brand for offer eligibility checking
 				item_group: item.item_group,
 				brand: item.brand,
+				// Preserve variant_of and template_item for variant tracking
+				variant_of: item.variant_of,
+				template_item: item.template_item,
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes

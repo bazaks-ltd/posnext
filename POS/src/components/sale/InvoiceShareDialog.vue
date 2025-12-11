@@ -63,9 +63,19 @@
 					</button>
 				</div>
 
+				<!-- Loading state -->
+				<div
+					v-if="isLoadingOptions"
+					class="p-4 bg-gray-50 border border-gray-200 rounded-lg"
+				>
+					<p class="text-sm text-gray-600">
+						{{ __('Loading sharing options...') }}
+					</p>
+				</div>
+
 				<!-- No channels available message -->
 				<div
-					v-if="!hasEnabledChannels"
+					v-else-if="!hasEnabledChannels"
 					class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
 				>
 					<p class="text-sm text-yellow-800">
@@ -193,6 +203,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Dialog, Input, Button } from 'frappe-ui'
 import { useInvoiceSharing } from '@/composables/useInvoiceSharing'
+import { useInvoiceSharingStore } from '@/stores/invoiceSharing'
 import { useToast } from '@/composables/useToast'
 
 const props = defineProps({
@@ -224,6 +235,10 @@ const props = defineProps({
 		type: String,
 		default: null,
 		validator: (value) => !value || ['whatsapp', 'sms', 'email', 'download'].includes(value)
+	},
+	initialSharingOptions: {
+		type: Object,
+		default: null
 	}
 })
 
@@ -235,6 +250,7 @@ const show = computed({
 })
 
 const { shareViaWhatsApp, shareViaSMS, shareViaEmail, getSharingOptions } = useInvoiceSharing()
+const sharingStore = useInvoiceSharingStore()
 const { showSuccess, showError } = useToast()
 
 const activeChannel = ref('whatsapp')
@@ -249,6 +265,7 @@ const sharingOptions = ref({
 })
 const isSending = ref(false)
 const isDownloading = ref(false)
+const isLoadingOptions = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 const messagePreview = ref('')
@@ -273,7 +290,69 @@ const canSend = computed(() => {
 // Load sharing options when dialog opens
 watch(show, async (newValue) => {
 	if (newValue) {
-		await loadSharingOptions()
+		// Set loading state before loading options
+		isLoadingOptions.value = true
+		
+		// First, try to get options from store (cached)
+		if (props.posProfile) {
+			const cachedOptions = sharingStore.getSharingOptions(props.posProfile)
+			if (cachedOptions && (
+				cachedOptions.whatsapp?.enabled !== undefined ||
+				cachedOptions.sms?.enabled !== undefined ||
+				cachedOptions.email?.enabled !== undefined
+			)) {
+				// Use cached options immediately
+				sharingOptions.value = {
+					whatsapp: { enabled: Boolean(cachedOptions.whatsapp?.enabled), template: cachedOptions.whatsapp?.template },
+					sms: { enabled: Boolean(cachedOptions.sms?.enabled), template: cachedOptions.sms?.template },
+					email: { enabled: Boolean(cachedOptions.email?.enabled), template: cachedOptions.email?.template }
+				}
+				isLoadingOptions.value = false
+				
+				// Only fetch customer-specific info if invoice is provided (this is lightweight)
+				if (props.invoiceName) {
+					loadSharingOptions().catch(err => {
+						console.error('Failed to load customer info:', err)
+					})
+				}
+			} else {
+				// Fallback: use initial options if provided
+				if (props.initialSharingOptions) {
+					sharingOptions.value = {
+						whatsapp: { enabled: Boolean(props.initialSharingOptions.whatsapp?.enabled), template: props.initialSharingOptions.whatsapp?.template },
+						sms: { enabled: Boolean(props.initialSharingOptions.sms?.enabled), template: props.initialSharingOptions.sms?.template },
+						email: { enabled: Boolean(props.initialSharingOptions.email?.enabled), template: props.initialSharingOptions.email?.template }
+					}
+					isLoadingOptions.value = false
+				} else {
+					// Last resort: reset to default and try to load
+					sharingOptions.value = {
+						whatsapp: { enabled: false },
+						sms: { enabled: false },
+						email: { enabled: false }
+					}
+					await loadSharingOptions()
+				}
+			}
+		} else {
+			// No POS profile, use initial options or default
+			if (props.initialSharingOptions) {
+				sharingOptions.value = {
+					whatsapp: { enabled: Boolean(props.initialSharingOptions.whatsapp?.enabled), template: props.initialSharingOptions.whatsapp?.template },
+					sms: { enabled: Boolean(props.initialSharingOptions.sms?.enabled), template: props.initialSharingOptions.sms?.template },
+					email: { enabled: Boolean(props.initialSharingOptions.email?.enabled), template: props.initialSharingOptions.email?.template }
+				}
+				isLoadingOptions.value = false
+			} else {
+				sharingOptions.value = {
+					whatsapp: { enabled: false },
+					sms: { enabled: false },
+					email: { enabled: false }
+				}
+				await loadSharingOptions()
+			}
+		}
+		
 		// Pre-fill contact info from customer
 		contactInfo.value.mobile = props.customerMobile || ''
 		contactInfo.value.email = props.customerEmail || ''
@@ -302,6 +381,9 @@ watch(show, async (newValue) => {
 		if (activeChannel.value !== 'download') {
 			await loadMessagePreview()
 		}
+		
+		// Clear loading state after everything is loaded
+		isLoadingOptions.value = false
 	}
 })
 
@@ -314,12 +396,18 @@ watch([activeChannel, () => sharingOptions.value], async () => {
 
 async function loadSharingOptions() {
 	try {
+		// Only fetch customer-specific info if invoice is provided
+		// The sharing options themselves should already be cached
 		const options = await getSharingOptions(props.posProfile, props.invoiceName)
-		console.log('Loaded sharing options:', options)
-		sharingOptions.value = options || {
-			whatsapp: { enabled: false },
-			sms: { enabled: false },
-			email: { enabled: false }
+		console.log('Loaded sharing options (for customer info):', options)
+		
+		// Update sharing options only if we got them (should be from cache)
+		if (options) {
+			sharingOptions.value = {
+				whatsapp: { enabled: Boolean(options.whatsapp?.enabled), template: options.whatsapp?.template },
+				sms: { enabled: Boolean(options.sms?.enabled), template: options.sms?.template },
+				email: { enabled: Boolean(options.email?.enabled), template: options.email?.template }
+			}
 		}
 		
 		// Pre-fill customer contact info from API response if not already set via props
@@ -336,11 +424,7 @@ async function loadSharingOptions() {
 		console.log('Has enabled channels:', hasEnabledChannels.value)
 	} catch (error) {
 		console.error('Failed to load sharing options:', error)
-		sharingOptions.value = {
-			whatsapp: { enabled: false },
-			sms: { enabled: false },
-			email: { enabled: false }
-		}
+		// Don't reset options on error, keep cached ones
 	}
 }
 
@@ -465,6 +549,7 @@ function closeDialog() {
 	setTimeout(() => {
 		errorMessage.value = ''
 		successMessage.value = ''
+		isLoadingOptions.value = false
 		contactInfo.value = {
 			mobile: '',
 			email: ''
