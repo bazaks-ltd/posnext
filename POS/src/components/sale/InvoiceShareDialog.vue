@@ -157,9 +157,6 @@
 							:placeholder="__('+1234567890')"
 							:disabled="isSending"
 						/>
-						<p class="mt-1 text-xs text-gray-500">
-							{{ __('Include country code (e.g., +1 for USA). If provided, will pre-fill the recipient.') }}
-						</p>
 					</div>
 				</div>
 

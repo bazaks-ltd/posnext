@@ -419,6 +419,7 @@ def get_whatsapp_web_url(invoice_name, pos_profile=None, mobile_no=None):
             pos_profile = doc.pos_profile
         
         print_format = "Standard"
+        whatsapp_web_preference = "whatsapp_protocol"  # Default preference
         if pos_profile:
             # Check if WhatsApp Web is enabled
             whatsapp_web_enabled = cint(frappe.db.get_value(
@@ -429,6 +430,13 @@ def get_whatsapp_web_url(invoice_name, pos_profile=None, mobile_no=None):
             
             if not whatsapp_web_enabled:
                 frappe.throw(_("WhatsApp Web sharing is not enabled for this POS Profile"))
+            
+            # Get WhatsApp Web preference (whatsapp_protocol or web)
+            whatsapp_web_preference = frappe.db.get_value(
+                "POS Profile",
+                pos_profile,
+                "custom_whatsapp_web_preference"
+            ) or "whatsapp_protocol"
             
             # Get print format
             print_format = frappe.db.get_value(
@@ -473,25 +481,38 @@ def get_whatsapp_web_url(invoice_name, pos_profile=None, mobile_no=None):
             # Remove all non-numeric characters (spaces, dashes, parentheses, plus signs)
             cleaned_phone = re.sub(r'[^\d]', '', mobile_no)
         
-        # Generate URLs - use whatsapp:// as default (works for both desktop and mobile web)
-        # WhatsApp URL format: whatsapp://send?phone={phone}&text={message}
-        if cleaned_phone:
-            # With phone number
-            whatsapp_url = f"whatsapp://send?phone={cleaned_phone}&text={encoded_message}"
-        else:
-            # Without phone number
-            whatsapp_url = f"whatsapp://send?text={encoded_message}"
+        # Generate URLs based on preference
+        # Build base URL parameters
+        phone_param = f"&phone={cleaned_phone}" if cleaned_phone else ""
         
-        # Also generate WhatsApp Web URL as fallback (for browser-only scenarios)
-        if cleaned_phone:
-            whatsapp_web_url = f"https://web.whatsapp.com/send?phone={cleaned_phone}&text={encoded_message}"
+        if whatsapp_web_preference == "web":
+            # User prefers web.whatsapp.com (open directly in browser)
+            if cleaned_phone:
+                primary_url = f"https://web.whatsapp.com/send?phone={cleaned_phone}&text={encoded_message}"
+            else:
+                primary_url = f"https://web.whatsapp.com/send?text={encoded_message}"
+            # Also generate whatsapp:// as alternative
+            if cleaned_phone:
+                alternative_url = f"whatsapp://send?phone={cleaned_phone}&text={encoded_message}"
+            else:
+                alternative_url = f"whatsapp://send?text={encoded_message}"
         else:
-            whatsapp_web_url = f"https://web.whatsapp.com/send?text={encoded_message}"
+            # Default: Use whatsapp:// protocol (whatsapp_protocol)
+            if cleaned_phone:
+                primary_url = f"whatsapp://send?phone={cleaned_phone}&text={encoded_message}"
+            else:
+                primary_url = f"whatsapp://send?text={encoded_message}"
+            # Also generate web URL as fallback
+            if cleaned_phone:
+                alternative_url = f"https://web.whatsapp.com/send?phone={cleaned_phone}&text={encoded_message}"
+            else:
+                alternative_url = f"https://web.whatsapp.com/send?text={encoded_message}"
         
         return {
             "success": True,
-            "url": whatsapp_url,  # Default: whatsapp:// protocol (works for desktop and mobile)
-            "web_url": whatsapp_web_url,  # Fallback: web.whatsapp.com
+            "url": primary_url,  # Primary URL based on preference
+            "web_url": alternative_url,  # Alternative/fallback URL
+            "preference": whatsapp_web_preference,  # Return preference for frontend
             "message": message,
             "protected_url": protected_url
         }

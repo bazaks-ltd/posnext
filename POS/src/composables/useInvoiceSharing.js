@@ -102,59 +102,63 @@ export function useInvoiceSharing() {
 			})
 			
 			if (result.success && result.url) {
-				// result.url contains whatsapp:// URL (works for desktop and mobile)
-				// result.web_url contains https://web.whatsapp.com URL (fallback for browser)
+				// result.url contains primary URL based on preference (whatsapp:// or web)
+				// result.web_url contains alternative/fallback URL
+				// result.preference contains the preference: "whatsapp_protocol" or "web"
 				
-				// Record if window had focus before attempting to open WhatsApp
-				const hadFocus = document.hasFocus()
+				const preference = result.preference || 'whatsapp_protocol'
 				
-				// Try opening WhatsApp using whatsapp:// protocol (works for desktop app and mobile)
-				try {
-					// Method 1: Create a temporary anchor element
-					const link = document.createElement('a')
-					link.href = result.url
-					link.style.display = 'none'
-					document.body.appendChild(link)
-					link.click()
-					setTimeout(() => {
-						document.body.removeChild(link)
-					}, 100)
-				} catch (e) {
-					console.log('Method 1 failed for WhatsApp app')
-				}
-				
-				// Method 2: Try window.location as alternative
-				try {
-					const originalHref = window.location.href
-					window.location.href = result.url
-					// Restore original location after a brief moment if WhatsApp didn't take over
-					setTimeout(() => {
-						try {
-							if (window.location.href === result.url || window.location.href.startsWith('whatsapp://')) {
-								window.location.href = originalHref
+				if (preference === 'web') {
+					// User prefers web.whatsapp.com - open directly in browser
+					window.open(result.url, '_blank', 'noopener,noreferrer')
+				} else {
+					// Default: Try whatsapp:// protocol first, fallback to web if it doesn't work
+					// Record if window had focus before attempting to open WhatsApp
+					const hadFocus = document.hasFocus()
+					let opened = false
+					
+					// Try opening WhatsApp using whatsapp:// protocol (works for desktop app and mobile)
+					// Use a single method to avoid multiple opens
+					try {
+						const link = document.createElement('a')
+						link.href = result.url
+						link.style.display = 'none'
+						link.target = '_blank'
+						document.body.appendChild(link)
+						link.click()
+						// Remove link immediately
+						setTimeout(() => {
+							if (document.body.contains(link)) {
+								document.body.removeChild(link)
 							}
-						} catch (e) {
-							// Ignore errors when checking/restoring location
-						}
-					}, 100)
-				} catch (e) {
-					console.log('Method 2 failed for WhatsApp app')
-				}
-				
-				// Wait a moment to see if WhatsApp app opened (took focus away)
-				// If window still has focus after 500ms, WhatsApp likely didn't open, so open web version
-				setTimeout(() => {
-					// Check if we still have focus (WhatsApp didn't take over)
-					if (document.hasFocus() || !hadFocus) {
-						// WhatsApp app didn't open, open web version as fallback
-						if (result.web_url) {
-							window.open(result.web_url, '_blank', 'noopener,noreferrer')
-						} else {
-							// Fallback to regular URL if web_url not available
-							window.open(result.url, '_blank', 'noopener,noreferrer')
-						}
+						}, 50)
+						opened = true
+					} catch (e) {
+						console.log('Failed to open WhatsApp app:', e)
 					}
-				}, 500)
+					
+					// Wait a moment to see if WhatsApp app opened (took focus away)
+					// If window still has focus after 300ms, WhatsApp likely didn't open, so open web version
+					setTimeout(() => {
+						// Only open web version if:
+						// 1. We tried to open the app (opened = true)
+						// 2. Window still has focus (WhatsApp didn't take over)
+						if (opened && (document.hasFocus() || !hadFocus)) {
+							// WhatsApp app didn't open, open web version as fallback
+							if (result.web_url) {
+								window.open(result.web_url, '_blank', 'noopener,noreferrer')
+							}
+						} else if (!opened) {
+							// If we couldn't even try to open the app, open web version directly
+							if (result.web_url) {
+								window.open(result.web_url, '_blank', 'noopener,noreferrer')
+							} else {
+								// Fallback to regular URL if web_url not available
+								window.open(result.url, '_blank', 'noopener,noreferrer')
+							}
+						}
+					}, 300)
+				}
 				
 				// Store in history
 				store.addToHistory({
