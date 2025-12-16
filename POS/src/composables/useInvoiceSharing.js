@@ -90,6 +90,102 @@ export function useInvoiceSharing() {
 	}
 
 	/**
+	 * Share invoice via WhatsApp Web/Desktop (opens WhatsApp Web or Desktop app with invoice link)
+	 */
+	async function shareViaWhatsAppWeb(invoiceName, posProfile, mobileNo = null) {
+		isLoading.value = true
+		try {
+			const result = await call('pos_next.api.invoice_sharing.get_whatsapp_web_url', {
+				invoice_name: invoiceName,
+				pos_profile: posProfile,
+				mobile_no: mobileNo || null
+			})
+			
+			if (result.success && result.url) {
+				// result.url contains whatsapp:// URL (works for desktop and mobile)
+				// result.web_url contains https://web.whatsapp.com URL (fallback for browser)
+				
+				// Record if window had focus before attempting to open WhatsApp
+				const hadFocus = document.hasFocus()
+				
+				// Try opening WhatsApp using whatsapp:// protocol (works for desktop app and mobile)
+				try {
+					// Method 1: Create a temporary anchor element
+					const link = document.createElement('a')
+					link.href = result.url
+					link.style.display = 'none'
+					document.body.appendChild(link)
+					link.click()
+					setTimeout(() => {
+						document.body.removeChild(link)
+					}, 100)
+				} catch (e) {
+					console.log('Method 1 failed for WhatsApp app')
+				}
+				
+				// Method 2: Try window.location as alternative
+				try {
+					const originalHref = window.location.href
+					window.location.href = result.url
+					// Restore original location after a brief moment if WhatsApp didn't take over
+					setTimeout(() => {
+						try {
+							if (window.location.href === result.url || window.location.href.startsWith('whatsapp://')) {
+								window.location.href = originalHref
+							}
+						} catch (e) {
+							// Ignore errors when checking/restoring location
+						}
+					}, 100)
+				} catch (e) {
+					console.log('Method 2 failed for WhatsApp app')
+				}
+				
+				// Wait a moment to see if WhatsApp app opened (took focus away)
+				// If window still has focus after 500ms, WhatsApp likely didn't open, so open web version
+				setTimeout(() => {
+					// Check if we still have focus (WhatsApp didn't take over)
+					if (document.hasFocus() || !hadFocus) {
+						// WhatsApp app didn't open, open web version as fallback
+						if (result.web_url) {
+							window.open(result.web_url, '_blank', 'noopener,noreferrer')
+						} else {
+							// Fallback to regular URL if web_url not available
+							window.open(result.url, '_blank', 'noopener,noreferrer')
+						}
+					}
+				}, 500)
+				
+				// Store in history
+				store.addToHistory({
+					invoice: invoiceName,
+					channel: 'whatsapp_web',
+					recipient: mobileNo || 'WhatsApp Web/Desktop',
+					timestamp: new Date().toISOString()
+				})
+				
+				return {
+					success: true,
+					message: 'WhatsApp opened successfully'
+				}
+			}
+			
+			return {
+				success: false,
+				message: 'Failed to generate WhatsApp URL'
+			}
+		} catch (error) {
+			console.error('WhatsApp Web sharing error:', error)
+			return {
+				success: false,
+				message: error.message || 'Failed to open WhatsApp'
+			}
+		} finally {
+			isLoading.value = false
+		}
+	}
+
+	/**
 	 * Share invoice via Email (similar to KLiK PoS)
 	 */
 	async function shareViaEmail(invoiceName, email, posProfile, customerName) {
@@ -179,6 +275,7 @@ export function useInvoiceSharing() {
 			if (posProfile && options) {
 				const optionsToCache = {
 					whatsapp: options.whatsapp || { enabled: false },
+					whatsapp_web: options.whatsapp_web || { enabled: false },
 					sms: options.sms || { enabled: false },
 					email: options.email || { enabled: false },
 					print_format: options.print_format || null
@@ -201,6 +298,7 @@ export function useInvoiceSharing() {
 			
 			return {
 				whatsapp: { enabled: false },
+				whatsapp_web: { enabled: false },
 				sms: { enabled: false },
 				email: { enabled: false }
 			}
@@ -244,6 +342,7 @@ export function useInvoiceSharing() {
 	return {
 		isLoading,
 		shareViaWhatsApp,
+		shareViaWhatsAppWeb,
 		shareViaSMS,
 		shareViaEmail,
 		getSharingOptions,

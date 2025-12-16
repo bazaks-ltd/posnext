@@ -223,11 +223,14 @@ import { useFormatters } from "@/composables/useFormatters"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import { logger } from "@/utils/logger"
+import { printInvoiceByName } from "@/utils/printInvoice"
+import { useToast } from "@/composables/useToast"
 import { Button, Dialog, call } from "frappe-ui"
 import { ref, watch, nextTick } from "vue"
 
 const log = logger.create('InvoiceDetailDialog')
 const { formatDate, formatTime } = useFormatters()
+const { showSuccess, showError } = useToast()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -243,7 +246,7 @@ function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
 }
 
-const emit = defineEmits(["update:modelValue", "print-invoice"])
+const emit = defineEmits(["update:modelValue"])
 
 const show = ref(props.modelValue)
 const loading = ref(false)
@@ -302,9 +305,17 @@ async function loadInvoiceDetails() {
 	}
 }
 
-function handlePrint() {
-	if (!invoiceData.value) return
-	emit("print-invoice", invoiceData.value)
+async function handlePrint() {
+	if (!props.invoiceName) return
+	
+	try {
+		// printInvoiceByName will automatically fetch the print format from the invoice's POS Profile
+		await printInvoiceByName(props.invoiceName)
+		showSuccess(__('Invoice sent to printer'))
+	} catch (error) {
+		log.error("Error printing invoice:", error)
+		showError(error.message || __('Failed to print invoice'))
+	}
 }
 </script>
 

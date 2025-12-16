@@ -318,12 +318,15 @@ def get_sharing_options(pos_profile, invoice_name=None):
         
         # Method 1: Try direct attribute access
         whatsapp_enabled = getattr(profile_doc, "custom_enable_whatsapp", None)
+        whatsapp_web_enabled = getattr(profile_doc, "custom_enable_whatsapp_web", None)
         sms_enabled = getattr(profile_doc, "custom_enable_sms", None)
         email_enabled = getattr(profile_doc, "custom_enable_email", None)
         
         # Method 2: If not found, try database query
         if whatsapp_enabled is None:
             whatsapp_enabled = frappe.db.get_value("POS Profile", pos_profile, "custom_enable_whatsapp") or 0
+        if whatsapp_web_enabled is None:
+            whatsapp_web_enabled = frappe.db.get_value("POS Profile", pos_profile, "custom_enable_whatsapp_web") or 0
         if sms_enabled is None:
             sms_enabled = frappe.db.get_value("POS Profile", pos_profile, "custom_enable_sms") or 0
         if email_enabled is None:
@@ -331,6 +334,7 @@ def get_sharing_options(pos_profile, invoice_name=None):
         
         # Convert to integer (handles both string "1"/"0" and integer 1/0, and None)
         whatsapp_enabled = cint(whatsapp_enabled) if whatsapp_enabled is not None else 0
+        whatsapp_web_enabled = cint(whatsapp_web_enabled) if whatsapp_web_enabled is not None else 0
         sms_enabled = cint(sms_enabled) if sms_enabled is not None else 0
         email_enabled = cint(email_enabled) if email_enabled is not None else 0
         
@@ -345,6 +349,9 @@ def get_sharing_options(pos_profile, invoice_name=None):
                 "enabled": whatsapp_enabled,
                 "template": whatsapp_template,
             },
+            "whatsapp_web": {
+                "enabled": whatsapp_web_enabled,
+            },
             "sms": {
                 "enabled": sms_enabled,
                 "template": sms_template,
@@ -357,7 +364,7 @@ def get_sharing_options(pos_profile, invoice_name=None):
         }
         
         # Debug logging
-        frappe.logger().info(f"Sharing options for {pos_profile}: WhatsApp={whatsapp_enabled}, SMS={sms_enabled}, Email={email_enabled}")
+        frappe.logger().info(f"Sharing options for {pos_profile}: WhatsApp={whatsapp_enabled}, WhatsApp Web={whatsapp_web_enabled}, SMS={sms_enabled}, Email={email_enabled}")
         
         # Get customer contact details if invoice provided
         if invoice_name and frappe.db.exists("Sales Invoice", invoice_name):
@@ -385,9 +392,113 @@ def get_sharing_options(pos_profile, invoice_name=None):
         frappe.log_error(frappe.get_traceback(), "Get Sharing Options Error")
         return {
             "whatsapp": {"enabled": False},
+            "whatsapp_web": {"enabled": False},
             "sms": {"enabled": False},
             "email": {"enabled": False},
         }
+
+
+@frappe.whitelist()
+def get_whatsapp_web_url(invoice_name, pos_profile=None, mobile_no=None):
+    """
+    Generate WhatsApp Web/Desktop URL with invoice link for sharing.
+    
+    Args:
+        invoice_name: Invoice name
+        pos_profile: Optional POS Profile name
+        mobile_no: Optional mobile number in international format (e.g., +1234567890)
+        
+    Returns:
+        dict: WhatsApp Web/Desktop URL and message text
+    """
+    try:
+        doc = frappe.get_doc("Sales Invoice", invoice_name)
+        
+        # Get POS Profile configuration
+        if not pos_profile:
+            pos_profile = doc.pos_profile
+        
+        print_format = "Standard"
+        if pos_profile:
+            # Check if WhatsApp Web is enabled
+            whatsapp_web_enabled = cint(frappe.db.get_value(
+                "POS Profile",
+                pos_profile,
+                "custom_enable_whatsapp_web"
+            ))
+            
+            if not whatsapp_web_enabled:
+                frappe.throw(_("WhatsApp Web sharing is not enabled for this POS Profile"))
+            
+            # Get print format
+            print_format = frappe.db.get_value(
+                "POS Profile",
+                pos_profile,
+                "custom_default_print_format"
+            ) or "Standard"
+        
+        # Format invoice amount
+        from frappe.utils import fmt_money
+        invoice_amount = fmt_money(doc.rounded_total or doc.grand_total, currency=doc.currency)
+        
+        # Generate protected printview URL (no expiry for WhatsApp Web, similar to WhatsApp)
+        protected_url = get_protected_printview_url(
+            doctype="Sales Invoice",
+            name=invoice_name,
+            print_format=print_format,
+            no_letterhead=0,
+            lang="en",
+            no_expiry=True
+        )
+        
+        # Create message similar to email
+        customer_name = doc.customer_name or "Customer"
+        company = frappe.defaults.get_user_default('Company')
+        
+        message = _("Invoice {0} from {1}\n\nThe total amount due is {2}.\n\nView your invoice: {3}").format(
+            doc.name,
+            company,
+            invoice_amount,
+            protected_url
+        )
+        
+        # Encode message for URL
+        import urllib.parse
+        import re
+        encoded_message = urllib.parse.quote(message)
+        
+        # Clean phone number: remove all non-numeric characters (keep only digits)
+        cleaned_phone = ""
+        if mobile_no:
+            # Remove all non-numeric characters (spaces, dashes, parentheses, plus signs)
+            cleaned_phone = re.sub(r'[^\d]', '', mobile_no)
+        
+        # Generate URLs - use whatsapp:// as default (works for both desktop and mobile web)
+        # WhatsApp URL format: whatsapp://send?phone={phone}&text={message}
+        if cleaned_phone:
+            # With phone number
+            whatsapp_url = f"whatsapp://send?phone={cleaned_phone}&text={encoded_message}"
+        else:
+            # Without phone number
+            whatsapp_url = f"whatsapp://send?text={encoded_message}"
+        
+        # Also generate WhatsApp Web URL as fallback (for browser-only scenarios)
+        if cleaned_phone:
+            whatsapp_web_url = f"https://web.whatsapp.com/send?phone={cleaned_phone}&text={encoded_message}"
+        else:
+            whatsapp_web_url = f"https://web.whatsapp.com/send?text={encoded_message}"
+        
+        return {
+            "success": True,
+            "url": whatsapp_url,  # Default: whatsapp:// protocol (works for desktop and mobile)
+            "web_url": whatsapp_web_url,  # Fallback: web.whatsapp.com
+            "message": message,
+            "protected_url": protected_url
+        }
+        
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get WhatsApp Web URL Failed")
+        frappe.throw(_("Failed to generate WhatsApp Web URL: {0}").format(str(e)))
 
 
 @frappe.whitelist()
@@ -480,9 +591,23 @@ def get_protected_printview_url(doctype, name, print_format="Standard", no_lette
         
         frappe.db.commit()
         
-        # Build printview URL
+        # Build printview URL with properly encoded parameters
+        import urllib.parse
         base_url = get_url()
-        url = f"{base_url}/printview?doctype={doctype}&name={name}&format={print_format}&no_letterhead={no_letterhead}&_lang={lang}&key={key}"
+        
+        # URL encode parameters to handle spaces and special characters
+        params = {
+            'doctype': doctype,
+            'name': name,
+            'format': print_format,
+            'no_letterhead': str(no_letterhead),
+            '_lang': lang,
+            'key': key
+        }
+        
+        # Build query string with proper encoding
+        query_string = '&'.join([f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in params.items()])
+        url = f"{base_url}/printview?{query_string}"
         
         return url
     except Exception as e:

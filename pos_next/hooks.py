@@ -101,13 +101,14 @@ fixtures = [
 					"POS Profile-posa_allow_delete",
 					"POS Profile-posa_block_sale_beyond_available_qty",
 					"POS Profile-custom_invoice_sharing_section",
-					"POS Profile-custom_enable_whatsapp",
-					"POS Profile-custom_whatsapp_template",
-					"POS Profile-custom_enable_sms",
-					"POS Profile-custom_sms_template",
-					"POS Profile-custom_column_break_sharing",
-					"POS Profile-custom_enable_email",
-					"POS Profile-custom_email_template",
+				"POS Profile-custom_enable_whatsapp",
+				"POS Profile-custom_whatsapp_template",
+				"POS Profile-custom_enable_sms",
+				"POS Profile-custom_sms_template",
+				"POS Profile-custom_column_break_sharing",
+				"POS Profile-custom_enable_email",
+				"POS Profile-custom_email_template",
+				"POS Profile-custom_enable_whatsapp_web",
 					"POS Profile-custom_default_print_format"
 				]
 			]

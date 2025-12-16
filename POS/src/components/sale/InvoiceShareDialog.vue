@@ -24,7 +24,7 @@
 								: 'border-transparent text-gray-500 hover:text-gray-700'
 						]"
 					>
-						{{ __('WhatsApp') }}
+						{{ __('WhatsApp (API)') }}
 					</button>
 					<button
 						v-if="sharingOptions.sms?.enabled"
@@ -51,15 +51,16 @@
 						{{ __('Email') }}
 					</button>
 					<button
-						@click="activeChannel = 'download'"
+						v-if="sharingOptions.whatsapp_web?.enabled"
+						@click="activeChannel = 'whatsapp_web'"
 						:class="[
 							'px-4 py-2 border-b-2 font-medium transition-colors',
-							activeChannel === 'download'
+							activeChannel === 'whatsapp_web'
 								? 'border-blue-500 text-blue-600'
 								: 'border-transparent text-gray-500 hover:text-gray-700'
 						]"
 					>
-						{{ __('Download PDF') }}
+						{{ __('WhatsApp Web') }}
 					</button>
 				</div>
 
@@ -83,8 +84,13 @@
 					</p>
 				</div>
 
-				<!-- WhatsApp Channel -->
+				<!-- WhatsApp Channel (API) -->
 				<div v-if="activeChannel === 'whatsapp' && sharingOptions.whatsapp?.enabled" class="space-y-4">
+					<div class="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+						<p class="text-xs text-blue-800">
+							{{ __('WhatsApp API - Sends invoice via WhatsApp API. Requires mobile number and configured WhatsApp integration.') }}
+						</p>
+					</div>
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-1">
 							{{ __('Mobile Number') }}
@@ -98,15 +104,6 @@
 						<p class="mt-1 text-xs text-gray-500">
 							{{ __('Include country code (e.g., +1 for USA)') }}
 						</p>
-					</div>
-
-					<div v-if="messagePreview">
-						<label class="block text-sm font-medium text-gray-700 mb-1">
-							{{ __('Message Preview') }}
-						</label>
-						<div class="p-3 bg-gray-50 border border-gray-200 rounded text-sm whitespace-pre-wrap">
-							{{ messagePreview }}
-						</div>
 					</div>
 				</div>
 
@@ -122,15 +119,6 @@
 							:placeholder="__('+1234567890')"
 							:disabled="isSending"
 						/>
-					</div>
-
-					<div v-if="messagePreview">
-						<label class="block text-sm font-medium text-gray-700 mb-1">
-							{{ __('Message Preview') }}
-						</label>
-						<div class="p-3 bg-gray-50 border border-gray-200 rounded text-sm whitespace-pre-wrap">
-							{{ messagePreview }}
-						</div>
 					</div>
 				</div>
 
@@ -149,11 +137,28 @@
 					</div>
 				</div>
 
-				<!-- Download PDF Channel -->
-				<div v-if="activeChannel === 'download'" class="space-y-4">
-					<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-						<p class="text-sm text-blue-800">
-							{{ __('Click the "Download PDF" button below to save the invoice as a PDF file to your device.') }}
+				<!-- WhatsApp Web Channel -->
+				<div v-if="activeChannel === 'whatsapp_web' && sharingOptions.whatsapp_web?.enabled" class="space-y-4">
+					<div class="p-3 bg-green-50 border border-green-200 rounded-lg mb-4">
+						<p class="text-sm text-green-800 font-medium mb-2">
+							{{ __('WhatsApp Web/Desktop - Opens in Browser or Desktop App') }}
+						</p>
+						<p class="text-sm text-green-700">
+							{{ __('Opens WhatsApp Web in browser or WhatsApp Desktop app (if installed) with the invoice link ready to share. Mobile number is optional.') }}
+						</p>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">
+							{{ __('Mobile Number (Optional)') }}
+						</label>
+						<Input
+							v-model="contactInfo.mobile"
+							type="text"
+							:placeholder="__('+1234567890')"
+							:disabled="isSending"
+						/>
+						<p class="mt-1 text-xs text-gray-500">
+							{{ __('Include country code (e.g., +1 for USA). If provided, will pre-fill the recipient.') }}
 						</p>
 					</div>
 				</div>
@@ -176,7 +181,6 @@
 					{{ __('Cancel') }}
 				</Button>
 				<Button
-					v-if="activeChannel !== 'download'"
 					variant="solid"
 					@click="shareInvoice"
 					:loading="isSending"
@@ -184,23 +188,13 @@
 				>
 					{{ __('Send') }}
 				</Button>
-				<Button
-					v-else
-					variant="solid"
-					theme="blue"
-					@click="downloadPDF"
-					:loading="isDownloading"
-					:disabled="isDownloading"
-				>
-					{{ __('Download PDF') }}
-				</Button>
 			</div>
 		</template>
 	</Dialog>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Dialog, Input, Button } from 'frappe-ui'
 import { useInvoiceSharing } from '@/composables/useInvoiceSharing'
 import { useInvoiceSharingStore } from '@/stores/invoiceSharing'
@@ -234,7 +228,7 @@ const props = defineProps({
 	initialChannel: {
 		type: String,
 		default: null,
-		validator: (value) => !value || ['whatsapp', 'sms', 'email', 'download'].includes(value)
+		validator: (value) => !value || ['whatsapp', 'whatsapp_web', 'sms', 'email'].includes(value)
 	},
 	initialSharingOptions: {
 		type: Object,
@@ -249,7 +243,7 @@ const show = computed({
 	set: (value) => emit('update:modelValue', value)
 })
 
-const { shareViaWhatsApp, shareViaSMS, shareViaEmail, getSharingOptions } = useInvoiceSharing()
+const { shareViaWhatsApp, shareViaWhatsAppWeb, shareViaSMS, shareViaEmail, getSharingOptions } = useInvoiceSharing()
 const sharingStore = useInvoiceSharingStore()
 const { showSuccess, showError } = useToast()
 
@@ -260,11 +254,11 @@ const contactInfo = ref({
 })
 const sharingOptions = ref({
 	whatsapp: { enabled: false },
+	whatsapp_web: { enabled: false },
 	sms: { enabled: false },
 	email: { enabled: false }
 })
 const isSending = ref(false)
-const isDownloading = ref(false)
 const isLoadingOptions = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
@@ -273,13 +267,16 @@ const messagePreview = ref('')
 const hasEnabledChannels = computed(() => {
 	return (
 		sharingOptions.value.whatsapp?.enabled ||
+		sharingOptions.value.whatsapp_web?.enabled ||
 		sharingOptions.value.sms?.enabled ||
 		sharingOptions.value.email?.enabled
 	)
 })
 
 const canSend = computed(() => {
-	if (activeChannel.value === 'whatsapp' || activeChannel.value === 'sms') {
+	if (activeChannel.value === 'whatsapp_web') {
+		return true // WhatsApp Web doesn't require contact info (optional)
+	} else if (activeChannel.value === 'whatsapp' || activeChannel.value === 'sms') {
 		return contactInfo.value.mobile && contactInfo.value.mobile.length >= 10
 	} else if (activeChannel.value === 'email') {
 		return contactInfo.value.email && contactInfo.value.email.includes('@')
@@ -293,51 +290,51 @@ watch(show, async (newValue) => {
 		// Set loading state before loading options
 		isLoadingOptions.value = true
 		
-		// First, try to get options from store (cached)
+		// Always fetch fresh options from API to ensure we have latest settings
+		// This ensures changes in POS Profile are reflected immediately
 		if (props.posProfile) {
-			// Check if options are actually cached (not just default values)
-			const hasCachedOptions = props.posProfile in sharingStore.sharingOptionsByProfile
-			const cachedOptions = sharingStore.getSharingOptions(props.posProfile)
-			
-			if (hasCachedOptions && cachedOptions) {
-				// Use cached options immediately
-				sharingOptions.value = {
-					whatsapp: { enabled: Boolean(cachedOptions.whatsapp?.enabled), template: cachedOptions.whatsapp?.template },
-					sms: { enabled: Boolean(cachedOptions.sms?.enabled), template: cachedOptions.sms?.template },
-					email: { enabled: Boolean(cachedOptions.email?.enabled), template: cachedOptions.email?.template }
+			// Always load fresh options from API (force refresh)
+			try {
+				const options = await getSharingOptions(props.posProfile, props.invoiceName, true) // forceRefresh = true
+				if (options) {
+					sharingOptions.value = {
+						whatsapp: { enabled: Boolean(options.whatsapp?.enabled), template: options.whatsapp?.template },
+						whatsapp_web: { enabled: Boolean(options.whatsapp_web?.enabled) },
+						sms: { enabled: Boolean(options.sms?.enabled), template: options.sms?.template },
+						email: { enabled: Boolean(options.email?.enabled), template: options.email?.template }
+					}
+					
+					// Pre-fill customer contact info from API response if not already set via props
+					if (options?.customer) {
+						if (!contactInfo.value.mobile && options.customer.mobile_no) {
+							contactInfo.value.mobile = options.customer.mobile_no
+						}
+						if (!contactInfo.value.email && options.customer.email_id) {
+							contactInfo.value.email = options.customer.email_id
+						}
+					}
 				}
 				isLoadingOptions.value = false
-				
-				// Only fetch customer-specific info if invoice is provided (this is lightweight)
-				if (props.invoiceName) {
-					loadSharingOptions().catch(err => {
-						console.error('Failed to load customer info:', err)
-					})
-				}
-			} else {
-				// Fallback: use initial options if provided
-				if (props.initialSharingOptions) {
+			} catch (error) {
+				console.error('Failed to load sharing options:', error)
+				// Fallback to cached options if API fails
+				const cachedOptions = sharingStore.getSharingOptions(props.posProfile)
+				if (cachedOptions) {
 					sharingOptions.value = {
-						whatsapp: { enabled: Boolean(props.initialSharingOptions.whatsapp?.enabled), template: props.initialSharingOptions.whatsapp?.template },
-						sms: { enabled: Boolean(props.initialSharingOptions.sms?.enabled), template: props.initialSharingOptions.sms?.template },
-						email: { enabled: Boolean(props.initialSharingOptions.email?.enabled), template: props.initialSharingOptions.email?.template }
+						whatsapp: { enabled: Boolean(cachedOptions.whatsapp?.enabled), template: cachedOptions.whatsapp?.template },
+						whatsapp_web: { enabled: Boolean(cachedOptions.whatsapp_web?.enabled) },
+						sms: { enabled: Boolean(cachedOptions.sms?.enabled), template: cachedOptions.sms?.template },
+						email: { enabled: Boolean(cachedOptions.email?.enabled), template: cachedOptions.email?.template }
 					}
-					isLoadingOptions.value = false
-				} else {
-					// Last resort: reset to default and try to load
-					sharingOptions.value = {
-						whatsapp: { enabled: false },
-						sms: { enabled: false },
-						email: { enabled: false }
-					}
-					await loadSharingOptions()
 				}
+				isLoadingOptions.value = false
 			}
 		} else {
 			// No POS profile, use initial options or default
 			if (props.initialSharingOptions) {
 				sharingOptions.value = {
 					whatsapp: { enabled: Boolean(props.initialSharingOptions.whatsapp?.enabled), template: props.initialSharingOptions.whatsapp?.template },
+					whatsapp_web: { enabled: Boolean(props.initialSharingOptions.whatsapp_web?.enabled) },
 					sms: { enabled: Boolean(props.initialSharingOptions.sms?.enabled), template: props.initialSharingOptions.sms?.template },
 					email: { enabled: Boolean(props.initialSharingOptions.email?.enabled), template: props.initialSharingOptions.email?.template }
 				}
@@ -345,6 +342,7 @@ watch(show, async (newValue) => {
 			} else {
 				sharingOptions.value = {
 					whatsapp: { enabled: false },
+					whatsapp_web: { enabled: false },
 					sms: { enabled: false },
 					email: { enabled: false }
 				}
@@ -362,24 +360,21 @@ watch(show, async (newValue) => {
 		
 		// Set active channel: use initialChannel if provided and enabled, otherwise first available
 		if (props.initialChannel) {
-			if (props.initialChannel === 'download' || sharingOptions.value[props.initialChannel]?.enabled) {
+			if (sharingOptions.value[props.initialChannel]?.enabled) {
 				activeChannel.value = props.initialChannel
 			}
 		} else if (sharingOptions.value.whatsapp?.enabled) {
 			activeChannel.value = 'whatsapp'
+		} else if (sharingOptions.value.whatsapp_web?.enabled) {
+			activeChannel.value = 'whatsapp_web'
 		} else if (sharingOptions.value.sms?.enabled) {
 			activeChannel.value = 'sms'
 		} else if (sharingOptions.value.email?.enabled) {
 			activeChannel.value = 'email'
-		} else {
-			// Default to download if no sharing channels enabled
-			activeChannel.value = 'download'
 		}
 		
-		// Load message preview (skip for download channel)
-		if (activeChannel.value !== 'download') {
-			await loadMessagePreview()
-		}
+		// Load message preview
+		await loadMessagePreview()
 		
 		// Clear loading state after everything is loaded
 		isLoadingOptions.value = false
@@ -388,7 +383,7 @@ watch(show, async (newValue) => {
 
 // Update preview when channel or template changes
 watch([activeChannel, () => sharingOptions.value], async () => {
-	if (show.value && activeChannel.value !== 'download') {
+	if (show.value) {
 		await loadMessagePreview()
 	}
 }, { deep: true })
@@ -404,6 +399,7 @@ async function loadSharingOptions() {
 		if (options) {
 			sharingOptions.value = {
 				whatsapp: { enabled: Boolean(options.whatsapp?.enabled), template: options.whatsapp?.template },
+				whatsapp_web: { enabled: Boolean(options.whatsapp_web?.enabled) },
 				sms: { enabled: Boolean(options.sms?.enabled), template: options.sms?.template },
 				email: { enabled: Boolean(options.email?.enabled), template: options.email?.template }
 			}
@@ -477,14 +473,24 @@ async function shareInvoice() {
 				props.posProfile,
 				customerName
 			)
+		} else if (activeChannel.value === 'whatsapp_web') {
+			result = await shareViaWhatsAppWeb(
+				props.invoiceName,
+				props.posProfile,
+				contactInfo.value.mobile || null
+			)
 		}
 
-		if (result.success) {
+		if (result && result.success) {
 			successMessage.value = result.message
 			showSuccess(result.message)
 			emit('shared', {
 				channel: activeChannel.value,
-				recipient: activeChannel.value === 'email' ? contactInfo.value.email : contactInfo.value.mobile
+				recipient: activeChannel.value === 'email' 
+					? contactInfo.value.email 
+					: activeChannel.value === 'whatsapp_web'
+						? 'WhatsApp Web'
+						: contactInfo.value.mobile
 			})
 			
 			// Close dialog after 1.5 seconds
@@ -500,50 +506,6 @@ async function shareInvoice() {
 		showError(errorMessage.value)
 	} finally {
 		isSending.value = false
-	}
-}
-
-async function downloadPDF() {
-	errorMessage.value = ''
-	successMessage.value = ''
-	isDownloading.value = true
-
-	try {
-		// Get print format from sharing options (returned by API) or use default
-		const printFormat = sharingOptions.value.print_format || 'Standard'
-		
-		// Build download URL using Frappe's download_pdf endpoint
-		const params = new URLSearchParams({
-			doctype: 'Sales Invoice',
-			name: props.invoiceName,
-			format: printFormat,
-			no_letterhead: 0
-		})
-		
-		const downloadUrl = `/api/method/frappe.utils.print_format.download_pdf?${params.toString()}`
-		
-		// Create a temporary link and trigger download
-		const link = document.createElement('a')
-		link.href = downloadUrl
-		link.download = `${props.invoiceName}.pdf`
-		link.style.display = 'none'
-		document.body.appendChild(link)
-		link.click()
-		document.body.removeChild(link)
-		
-		// Show success message
-		successMessage.value = __('PDF download started')
-		showSuccess(__('Invoice PDF download started'))
-		
-		// Close dialog after 1 second
-		setTimeout(() => {
-			closeDialog()
-		}, 1000)
-	} catch (error) {
-		errorMessage.value = error.message || __('Failed to download PDF')
-		showError(errorMessage.value)
-	} finally {
-		isDownloading.value = false
 	}
 }
 

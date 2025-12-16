@@ -27,6 +27,7 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 		getSharingOptions: (state) => (posProfile) => {
 			return state.sharingOptionsByProfile[posProfile] || {
 				whatsapp: { enabled: false, template: null },
+				whatsapp_web: { enabled: false },
 				sms: { enabled: false, template: null },
 				email: { enabled: false, template: null },
 				print_format: null
@@ -41,6 +42,7 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 			if (!options) return false
 			return (
 				options.whatsapp?.enabled ||
+				options.whatsapp_web?.enabled ||
 				options.sms?.enabled ||
 				options.email?.enabled
 			)
@@ -86,6 +88,7 @@ export const useInvoiceSharingStore = defineStore('invoiceSharing', {
 			
 			this.sharingOptionsByProfile[posProfile] = {
 				whatsapp: options.whatsapp || { enabled: false },
+				whatsapp_web: options.whatsapp_web || { enabled: false },
 				sms: options.sms || { enabled: false },
 				email: options.email || { enabled: false },
 				print_format: options.print_format || null
