@@ -295,12 +295,11 @@ watch(show, async (newValue) => {
 		
 		// First, try to get options from store (cached)
 		if (props.posProfile) {
+			// Check if options are actually cached (not just default values)
+			const hasCachedOptions = props.posProfile in sharingStore.sharingOptionsByProfile
 			const cachedOptions = sharingStore.getSharingOptions(props.posProfile)
-			if (cachedOptions && (
-				cachedOptions.whatsapp?.enabled !== undefined ||
-				cachedOptions.sms?.enabled !== undefined ||
-				cachedOptions.email?.enabled !== undefined
-			)) {
+			
+			if (hasCachedOptions && cachedOptions) {
 				// Use cached options immediately
 				sharingOptions.value = {
 					whatsapp: { enabled: Boolean(cachedOptions.whatsapp?.enabled), template: cachedOptions.whatsapp?.template },
@@ -422,9 +421,14 @@ async function loadSharingOptions() {
 		
 		console.log('Sharing options after assignment:', sharingOptions.value)
 		console.log('Has enabled channels:', hasEnabledChannels.value)
+		
+		// Ensure loading state is cleared after options are loaded
+		isLoadingOptions.value = false
 	} catch (error) {
 		console.error('Failed to load sharing options:', error)
 		// Don't reset options on error, keep cached ones
+		// Ensure loading state is cleared even on error
+		isLoadingOptions.value = false
 	}
 }
 

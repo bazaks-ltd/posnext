@@ -3,10 +3,11 @@
 		<div class="flex py-2 sm:py-3">
 			<!-- POS Icon - Aligned with Management Sidebar (64px) -->
 			<div class="w-16 flex-shrink-0 flex items-center justify-center">
-				<button
+				<a
+					href="/app"
 					class="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-md flex-shrink-0  active:scale-95 transition-all p-1.5"
 					:aria-label="'BZKPOS'" :title="__('BZKPOS')"
-					@click="navigateToApp">
+					@click="handleLogoClick">
 
 					<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 964 742.66669"
 						xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
@@ -40,7 +41,7 @@
 							</g>
 						</g>
 					</svg>
-				</button>
+				</a>
 			</div>
 
 			<!-- Main Header Content -->
@@ -269,6 +270,16 @@ function handleBlur(event) {
 
 function navigateToApp() {
 	window.location.href = '/app'
+}
+
+function handleLogoClick(event) {
+	// Allow Cmd+Click (Mac) or Ctrl+Click (Windows/Linux) to open in new tab
+	if (event.metaKey || event.ctrlKey) {
+		return // Let the browser handle it normally
+	}
+	// For regular clicks, prevent default and use custom navigation
+	event.preventDefault()
+	navigateToApp()
 }
 
 const props = defineProps({

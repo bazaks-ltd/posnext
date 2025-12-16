@@ -34,6 +34,7 @@ def send_invoice_whatsapp(**kwargs):
         # Get POS Profile configuration
         pos_profile = doc.pos_profile or data.get("pos_profile")
         print_format = None
+        whatsapp_template = None
         
         if pos_profile:
             # Check if WhatsApp is enabled
@@ -52,6 +53,13 @@ def send_invoice_whatsapp(**kwargs):
                 pos_profile,
                 "custom_default_print_format"
             ) or "Standard"
+            
+            # Get WhatsApp template if set
+            whatsapp_template = frappe.db.get_value(
+                "POS Profile",
+                pos_profile,
+                "custom_whatsapp_template"
+            )
         else:
             print_format = "Standard"
         
@@ -69,17 +77,31 @@ def send_invoice_whatsapp(**kwargs):
             no_expiry=True
         )
         
-        # Add link to message
-        message_with_link = f"{message_text}\n\nView your invoice: {protected_url}"
-        
         # Use WhatsApp utility function (similar to KLiK PoS)
         from pos_next.utils.whatsapp_utils import send_whatsapp_message
+        
+        # Determine message type based on template
+        if whatsapp_template:
+            # Use template message type if template is set
+            message_type = "template"
+            template_name = whatsapp_template
+            # For template messages, parameters can be passed separately
+            # The message_content will be ignored when using template
+            message_content = None
+        else:
+            # Use text message type if no template
+            message_type = "text"
+            template_name = None
+            # Add link to message for text messages
+            message_with_link = f"{message_text}\n\nView your invoice: {protected_url}"
+            message_content = message_with_link
         
         # Send WhatsApp message with link (no PDF attachment)
         result = send_whatsapp_message(
             to_number=mobile,
-            message_type="text",
-            message_content=message_with_link,
+            message_type=message_type,
+            message_content=message_content,
+            template_name=template_name,
             reference_doctype="Sales Invoice",
             reference_name=invoice_no,
             attach_document=False,

@@ -629,9 +629,21 @@ def _build_item_base_conditions(pos_profile_doc, item_group=None):
 		conditions.append("(IFNULL(custom_company, '') IN (%s, ''))")
 		params.append(pos_profile_doc.company)
 
+	# Add item group filter:
+	# - If a specific item_group is provided, filter by that group
+	# - If no specific item_group is provided but POS Profile has item_groups defined, 
+	#   filter to only show items from those groups
+	# - If no item_groups are defined in POS Profile, show all items
 	if item_group:
 		conditions.append("item_group = %s")
 		params.append(item_group)
+	elif hasattr(pos_profile_doc, "item_groups") and pos_profile_doc.item_groups:
+		# Filter by all item groups defined in POS Profile
+		profile_item_groups = [d.item_group for d in pos_profile_doc.item_groups]
+		if profile_item_groups:
+			placeholders = ", ".join(["%s"] * len(profile_item_groups))
+			conditions.append(f"item_group IN ({placeholders})")
+			params.extend(profile_item_groups)
 
 	return conditions, params
 
@@ -845,9 +857,18 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 		if pos_profile_doc.company:
 			filters["ifnull(custom_company, '')"] = ["in", [pos_profile_doc.company, ""]]
 
-		# Add item group filter if provided
+		# Add item group filter:
+		# - If a specific item_group is provided, filter by that group
+		# - If no specific item_group is provided but POS Profile has item_groups defined, 
+		#   filter to only show items from those groups
+		# - If no item_groups are defined in POS Profile, show all items
 		if item_group:
 			filters["item_group"] = item_group
+		elif hasattr(pos_profile_doc, "item_groups") and pos_profile_doc.item_groups:
+			# Filter by all item groups defined in POS Profile
+			profile_item_groups = [d.item_group for d in pos_profile_doc.item_groups]
+			if profile_item_groups:
+				filters["item_group"] = ["in", profile_item_groups]
 
 		# Build search conditions with fuzzy word-order independent matching
 		if search_term and len(search_term.strip()) > 0:

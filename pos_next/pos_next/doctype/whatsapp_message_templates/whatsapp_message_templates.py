@@ -12,7 +12,7 @@ class WhatsAppMessageTemplates(Document):
 			self.actual_name = self.template_name.lower().replace(" ", "_").replace("-", "_")
 		
 		# Auto-set language_code from language if not set
-		if not self.language_code and self.language:
+		if self.language:
 			lang_code = frappe.db.get_value("Language", self.language) or "en"
 			self.language_code = lang_code.replace("-", "_")
 

@@ -641,23 +641,22 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			// When offline, we can only use cached data. No server fetch possible.
 			// Load behavior:
 			// - WITH filters: Load ALL cached items (limit: 10000)
-			// - WITHOUT filters: Load first batch (limit: itemsPerPage)
+			// - WITHOUT filters: Load ALL cached items (limit: 10000)
 			if (offline) {
 				log.info("Offline mode - loading from cache")
 				if (stats.cacheReady && stats.items > 0) {
 					try {
-						// Determine cache load limit based on filter presence
-						// Filters active: Load everything (client-side filtering needs all data)
-						// No filters: Load first page only (infinite scroll will load more)
-						const limit = hasFilters ? 10000 : itemsPerPage.value
+						// Load all cached items (high limit to get all items)
+						// Client-side filtering and display needs all data available
+						const limit = 10000
 						const cached = await offlineWorker.searchCachedItems("", limit)
 
 						if (cached && cached.length > 0) {
 							replaceAllItems(cached)
 							totalItemsLoaded.value = cached.length
 							currentOffset.value = cached.length
-							// Disable infinite scroll if filters active (all data loaded)
-							hasMore.value = hasFilters ? false : cached.length >= itemsPerPage.value
+							// All data loaded, disable infinite scroll
+							hasMore.value = false
 							log.success(`Loaded ${cached.length} items from cache (offline mode)`)
 						} else {
 							replaceAllItems([])
@@ -684,16 +683,16 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			if (!shouldFetchFromServer && stats.cacheReady && stats.items > 0) {
 				log.info("Using cached items (already fetched from server this session)")
 				try {
-					// Load limit based on filter configuration
-					// Same logic as offline mode - filters need all data
-					const limit = hasFilters ? 10000 : itemsPerPage.value
+					// Load all cached items (high limit to get all items)
+					const limit = 10000
 					const cached = await offlineWorker.searchCachedItems("", limit)
 
 					if (cached && cached.length > 0) {
 						replaceAllItems(cached)
 						totalItemsLoaded.value = cached.length
 						currentOffset.value = cached.length
-						hasMore.value = hasFilters ? false : cached.length >= itemsPerPage.value
+						// All data loaded, disable infinite scroll
+						hasMore.value = false
 						loading.value = false
 						log.success(`Loaded ${cached.length} items from cache`)
 						return // Exit early - cache hit, no server fetch needed
@@ -754,33 +753,33 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				}
 
 			// ----------------------------------------------------------------
-			// UNFILTERED LOADING PATH: Lazy load with infinite scroll
+			// UNFILTERED LOADING PATH: Load ALL items (no filters)
 			// ----------------------------------------------------------------
-			// When no filters (default "All Items" view), load first batch only
-			// and enable infinite scroll for progressive loading. Suitable for
-			// large catalogs (1000+ items) to minimize initial load time.
+			// When no filters (default "All Items" view), load ALL items at once
+			// to show complete catalog. Pagination is handled by the UI component
+			// (virtual scrolling), not by lazy loading.
 			} else {
-				log.debug(`Fetching ${itemsPerPage.value} items (no filters)`)
+				log.debug(`Fetching all items (no filters)`)
 
-				// Fetch first batch (e.g., 20-50 items) for fast initial render
+				// Fetch ALL items (high limit to get all items from all groups)
 				const response = await call("pos_next.api.items.get_items", {
 					pos_profile: profile,
 					search_term: "",
 					item_group: null, // No filter - get items from all groups
 					start: 0,
-					limit: itemsPerPage.value,
+					limit: 10000, // High limit to fetch all items
 				})
 				const list = response?.message || response || []
 
 				if (list.length > 0) {
-					// Store first batch in allItems
+					// Store ALL items (not just first batch)
 					replaceAllItems(list)
 					totalItemsLoaded.value = list.length
 					currentOffset.value = list.length
 
-					// Enable infinite scroll - more items available
-					// loadMoreItems() will fetch additional batches as user scrolls
-					hasMore.value = true
+					// Disable infinite scroll - all data already loaded
+					// Scrolling will show more items from the existing array (UI pagination)
+					hasMore.value = false
 
 					// Clear cache first to remove any disabled/stale items, then cache fresh data
 					await offlineWorker.clearItemsCache()
@@ -791,24 +790,18 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 					log.success(`Loaded ${list.length} items from server`)
 				}
-
-				// Start background sync to cache remaining items over time
-				// This improves offline experience without blocking initial load
-				// Only start if cache is new or has few items
-				if (!stats.cacheReady || stats.items < 50) {
-					startBackgroundCacheSync(profile, [])
-				}
 			}
 		} catch (error) {
 			log.error("Error loading items", error)
 
 			// Fallback to cache
 			try {
-				const cached = await offlineWorker.searchCachedItems("", itemsPerPage.value)
+				const cached = await offlineWorker.searchCachedItems("", 10000)
 				replaceAllItems(cached || [])
 				totalItemsLoaded.value = cached?.length || 0
 				currentOffset.value = cached?.length || 0
-				hasMore.value = (cached?.length || 0) >= itemsPerPage.value
+				// All data loaded, disable infinite scroll
+				hasMore.value = false
 				log.info(`Loaded ${cached?.length || 0} items from cache (fallback)`)
 			} catch (cacheError) {
 				log.error("Cache also failed", cacheError)
