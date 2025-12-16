@@ -194,7 +194,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Dialog, Input, Button } from 'frappe-ui'
 import { useInvoiceSharing } from '@/composables/useInvoiceSharing'
 import { useInvoiceSharingStore } from '@/stores/invoiceSharing'
@@ -379,7 +379,7 @@ watch(show, async (newValue) => {
 		// Clear loading state after everything is loaded
 		isLoadingOptions.value = false
 	}
-})
+}, { immediate: true })
 
 // Update preview when channel or template changes
 watch([activeChannel, () => sharingOptions.value], async () => {
