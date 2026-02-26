@@ -332,27 +332,33 @@ function buildUomOptions() {
 	if (!props.item) return []
 
 	const uomOptions = []
+	const stockUom = props.item.stock_uom || null
 
-	// Stock UOM option
-	uomOptions.push({
-		type: "uom",
-		uom: props.item.stock_uom,
-		conversion_factor: 1,
-		label: props.item.stock_uom,
-		description: __("Stock unit"),
-		rate: getUomPrice(props.item.stock_uom, 1),
-		priceLabel: __('per {0}', [props.item.stock_uom]),
-	})
+	// Only add options for UOMs the item actually has (no generic Nos/Unit)
+	// Stock UOM option (only if item has a stock UOM)
+	if (stockUom) {
+		uomOptions.push({
+			type: "uom",
+			uom: stockUom,
+			conversion_factor: 1,
+			label: stockUom,
+			description: __("Stock unit"),
+			rate: getUomPrice(stockUom, 1),
+			priceLabel: __('per {0}', [stockUom]),
+		})
+	}
 
-	// Additional UOMs
+	// Additional UOMs from item (only those configured on the item)
 	if (props.item.item_uoms && props.item.item_uoms.length > 0) {
+		const baseUom = stockUom || __("Unit")
 		props.item.item_uoms.forEach((uomData) => {
+			if (!uomData.uom) return
 			uomOptions.push({
 				type: "uom",
 				uom: uomData.uom,
 				conversion_factor: uomData.conversion_factor,
 				label: uomData.uom,
-				description: `1 ${uomData.uom} = ${uomData.conversion_factor} ${props.item.stock_uom}`,
+				description: `1 ${uomData.uom} = ${uomData.conversion_factor} ${baseUom}`,
 				rate: getUomPrice(uomData.uom, uomData.conversion_factor),
 				priceLabel: __('per {0}', [uomData.uom]),
 			})

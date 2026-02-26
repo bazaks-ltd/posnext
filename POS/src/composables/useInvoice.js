@@ -229,6 +229,7 @@ export function useInvoice() {
 				serial_and_batch_bundle: item.serial_and_batch_bundle, // Add bundle reference
 				_bundle_data: item._bundle_data, // Add bundle data for display
 				item_uoms: item.item_uoms || [], // Available UOMs for this item
+				is_stock_item: item.is_stock_item !== false, // false = service (no UOM selector in cart)
 				// Add item_group and brand for offer eligibility checking
 				item_group: item.item_group,
 				brand: item.brand,

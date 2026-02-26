@@ -378,7 +378,7 @@
 							</h3>
 							<p class="text-[9px] sm:text-[10px] text-gray-500 leading-tight">
 									<span class="font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
-									<span class="text-gray-400">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
+									<span class="text-gray-400">/ {{ item.stock_uom || item.uom || __('Unit', null, 'UOM') }}</span>
 							</p>
 						</div>
 					</div>
@@ -573,7 +573,7 @@
 								</span>
 							</td>
 							<td class="hidden md:table-cell px-2 sm:px-3 py-2 whitespace-nowrap md:w-[80px]">
-								<div class="text-xs sm:text-sm text-gray-500">{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</div>
+								<div class="text-xs sm:text-sm text-gray-500">{{ item.stock_uom || item.uom || __('Unit', null, 'UOM') }}</div>
 							</td>
 						</tr>
 						<!-- Loading More Indicator Row -->
@@ -1242,7 +1242,7 @@ function showWarehouseAvailability(item) {
 	warehouseDialogItem.value = {
 		itemCode: item.item_code,
 		itemName: item.item_name,
-		uom: item.uom || item.stock_uom || 'Nos',
+		uom: item.stock_uom || item.uom || 'Unit',
 		company: settingsStore.company
 	}
 	showWarehouseDialog.value = true

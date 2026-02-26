@@ -36,7 +36,7 @@
 						{{ localItem.item_name }}
 					</h3>
 				<p class="text-sm text-gray-500 truncate">
-					{{ formatCurrency(localItem.price_list_rate || localItem.rate) }} / {{ localItem.stock_uom || __('Nos', null, 'UOM') }}
+					{{ formatCurrency(localItem.price_list_rate || localItem.rate) }} / {{ localItem.stock_uom || __('Unit', null, 'UOM') }}
 				</p>
 				<!-- Show batch number(s) if item has batch -->
 				<div v-if="localItem.has_batch_no" class="mt-1 flex items-center gap-1 flex-wrap">
@@ -540,7 +540,7 @@ watch(
 		if (newItem) {
 			localItem.value = { ...newItem }
 			localQuantity.value = newItem.quantity || 1
-			localUom.value = newItem.uom || newItem.stock_uom || __("Nos")
+			localUom.value = newItem.uom || newItem.stock_uom || __("Unit")
 			localRate.value = newItem.rate || 0
 			localWarehouse.value =
 				newItem.warehouse || props.warehouses[0]?.name || ""

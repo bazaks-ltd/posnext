@@ -1496,8 +1496,8 @@ function handleItemSelected(item, autoAdd = false) {
 		return
 	}
 
-	// Check for UOMs
-	if (item.item_uoms && item.item_uoms.length > 0) {
+	// Check for UOMs — only show UOM selection for stock items; service items use default UOM and add directly
+	if (item.is_stock_item && item.item_uoms && item.item_uoms.length > 0) {
 		cartStore.setPendingItem(item, 1, "uom")
 		uiStore.showItemSelectionDialog = true
 		return
@@ -1740,7 +1740,7 @@ async function handleOptionSelected(option) {
 				variant.template_item = templateItemCode
 			}
 
-			if (variant.item_uoms && variant.item_uoms.length > 0) {
+			if (variant.is_stock_item && variant.item_uoms && variant.item_uoms.length > 0) {
 				cartStore.setPendingItem(variant, cartStore.pendingItemQty, "uom")
 				return
 			}

@@ -520,59 +520,69 @@
 										</button>
 									</div>
 
-									<!-- UOM Selector Dropdown -->
+									<!-- UOM: plain text for service items, dropdown only for stock items with multiple UOMs -->
 									<div class="relative group/uom">
-										<button
-											type="button"
-											@click="toggleUomDropdown(item.item_code)"
-											:disabled="!item.item_uoms || item.item_uoms.length === 0"
-											:class="[
-												'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
-												item.item_uoms && item.item_uoms.length > 0
-													? 'bg-blue-500 text-white border border-blue-400 hover:bg-blue-600 active:scale-95 cursor-pointer'
-													: 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed opacity-60'
-											]"
-											:title="item.item_uoms && item.item_uoms.length > 0 ? __('Click to change unit') : __('Only one unit available')"
+										<!-- Service item: show UOM as text only (no selector) -->
+										<span
+											v-if="item.is_stock_item === false"
+											class="h-6 sm:h-7 text-[10px] sm:text-xs font-bold text-gray-600 flex items-center justify-center min-w-[45px]"
 										>
-											{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}
-										</button>
-										<svg
-											:class="[
-												'absolute end-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none transition-transform',
-												openUomDropdown === item.item_code ? 'rotate-180' : '',
-												item.item_uoms && item.item_uoms.length > 0 ? 'text-white' : 'text-gray-400'
-											]"
-											fill="none" stroke="currentColor" viewBox="0 0 24 24"
-										>
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
-										</svg>
-										<div
-											v-if="openUomDropdown === item.item_code && item.item_uoms && item.item_uoms.length > 0"
-											class="absolute top-full start-0 mt-0.5 bg-white border border-blue-300 rounded shadow-xl z-50 min-w-full overflow-hidden"
-										>
+											{{ item.uom || item.stock_uom || __('Unit') }}
+										</span>
+										<!-- Stock item: dropdown only when item has 2+ distinct UOMs (stock_uom + others) -->
+										<template v-else>
 											<button
 												type="button"
-												@click="selectUom(item, item.stock_uom)"
+												@click="toggleUomDropdown(item.item_code)"
+												:disabled="getOtherUoms(item).length === 0"
 												:class="[
-													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-semibold transition-colors border-b border-gray-100',
-													(item.uom || item.stock_uom) === item.stock_uom ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-blue-50'
+													'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
+													getOtherUoms(item).length > 0
+														? 'bg-blue-500 text-white border border-blue-400 hover:bg-blue-600 active:scale-95 cursor-pointer'
+														: 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed opacity-60'
 												]"
+												:title="getOtherUoms(item).length > 0 ? __('Click to change unit') : __('Only one unit available')"
 											>
-												{{ item.stock_uom || __('Nos', null, 'UOM') }}
+												{{ item.stock_uom || item.uom || __('Unit', null, 'UOM') }}
 											</button>
-											<button
-												v-for="uomData in item.item_uoms"
-												:key="uomData.uom"
-												type="button"
-												@click="selectUom(item, uomData.uom)"
+											<svg
 												:class="[
-													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-semibold transition-colors border-b border-gray-100 last:border-0',
-													(item.uom || item.stock_uom) === uomData.uom ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-blue-50'
+													'absolute end-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none transition-transform',
+													openUomDropdown === item.item_code ? 'rotate-180' : '',
+													getOtherUoms(item).length > 0 ? 'text-white' : 'text-gray-400'
 												]"
+												fill="none" stroke="currentColor" viewBox="0 0 24 24"
 											>
-												{{ uomData.uom }}
-											</button>
-										</div>
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+											</svg>
+											<div
+												v-if="openUomDropdown === item.item_code && getOtherUoms(item).length > 0"
+												class="absolute top-full start-0 mt-0.5 bg-white border border-blue-300 rounded shadow-xl z-50 min-w-full overflow-hidden"
+											>
+												<button
+													type="button"
+													@click="selectUom(item, item.stock_uom)"
+													:class="[
+														'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-semibold transition-colors border-b border-gray-100',
+														(item.uom || item.stock_uom) === item.stock_uom ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-blue-50'
+													]"
+												>
+													{{ item.stock_uom || __('Unit', null, 'UOM') }}
+												</button>
+												<button
+													v-for="uomData in getOtherUoms(item)"
+													:key="uomData.uom"
+													type="button"
+													@click="selectUom(item, uomData.uom)"
+													:class="[
+														'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-semibold transition-colors border-b border-gray-100 last:border-0',
+														(item.uom || item.stock_uom) === uomData.uom ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-blue-50'
+													]"
+												>
+													{{ uomData.uom }}
+												</button>
+											</div>
+										</template>
 									</div>
 
 									<!-- Price -->
@@ -1265,6 +1275,18 @@ async function handleUomChange(item, newUom) {
  */
 function toggleUomDropdown(itemCode) {
 	openUomDropdown.value = openUomDropdown.value === itemCode ? null : itemCode
+}
+
+/**
+ * UOMs other than stock UOM (for dropdown; avoids duplicating stock_uom in the list).
+ *
+ * @param {Object} item - Cart item
+ * @returns {Array} item_uoms excluding the item's stock_uom
+ */
+function getOtherUoms(item) {
+	if (!item?.item_uoms?.length) return []
+	const stock = item.stock_uom || item.uom
+	return item.item_uoms.filter((u) => u.uom && u.uom !== stock)
 }
 
 /**
