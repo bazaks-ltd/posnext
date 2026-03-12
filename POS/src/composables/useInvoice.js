@@ -16,7 +16,11 @@ export function useInvoice() {
 	const additionalDiscount = ref(0)
 	const couponCode = ref(null)
 	const taxRules = ref([]) // Tax rules from POS Profile
-	const taxInclusive = ref(false) // Tax inclusive setting from POS Settings
+	// Tax mode is derived from the Taxes & Charges template (included_in_print_rate).
+	// We intentionally do not store a separate "tax inclusive" flag in POS Settings.
+	const taxInclusive = computed(() => {
+		return (taxRules.value || []).some((t) => (t?.included_in_print_rate || 0) === 1)
+	})
 
 	// Performance: Incrementally maintained aggregates (updated on add/remove/change)
 	// This avoids O(n) array reductions on every reactive change
@@ -645,6 +649,7 @@ export function useInvoice() {
 			posa_pos_opening_shift: posOpeningShift.value,
 			customer: customer.value?.name || customer.value,
 			items: rawItems.map((item) => {
+				const isStockItem = item.is_stock_item !== false
 				const itemData = {
 					item_code: item.item_code,
 					item_name: item.item_name,
@@ -660,10 +665,14 @@ export function useInvoice() {
 						: (item.quantity > 0 ? item.amount / item.quantity : item.rate),
 					price_list_rate: item.price_list_rate || item.rate,
 					uom: item.uom,
-					warehouse: item.warehouse,
 					conversion_factor: item.conversion_factor || 1,
 					discount_percentage: item.discount_percentage || 0,
 					discount_amount: item.discount_amount || 0,
+					is_stock_item: isStockItem,
+				}
+				// Non-stock (service) items: omit warehouse so backend does not require it
+				if (isStockItem && item.warehouse) {
+					itemData.warehouse = item.warehouse
 				}
 				
 				// If using serial_and_batch_bundle, don't include batch_no or serial_no
@@ -716,6 +725,7 @@ export function useInvoice() {
 				posa_pos_opening_shift: posOpeningShift.value,
 				customer: customer.value?.name || customer.value,
 				items: rawItems.map((item) => {
+					const isStockItem = item.is_stock_item !== false
 					const itemData = {
 						item_code: item.item_code,
 						item_name: item.item_name,
@@ -731,10 +741,14 @@ export function useInvoice() {
 							: (item.quantity > 0 ? item.amount / item.quantity : item.rate),
 						price_list_rate: item.price_list_rate || item.rate,
 						uom: item.uom,
-						warehouse: item.warehouse,
 						conversion_factor: item.conversion_factor || 1,
 						discount_percentage: item.discount_percentage || 0,
 						discount_amount: item.discount_amount || 0,
+						is_stock_item: isStockItem,
+					}
+					// Non-stock (service) items: omit warehouse so backend does not require it
+					if (isStockItem && item.warehouse) {
+						itemData.warehouse = item.warehouse
 					}
 					
 					// If using serial_and_batch_bundle, don't include batch_no or serial_no
@@ -960,20 +974,16 @@ export function useInvoice() {
 		}
 	}
 
-	async function loadTaxRules(profileName, posSettings = null) {
+	async function loadTaxRules(profileName) {
 		/**
-		 * Load tax rules from POS Profile and tax inclusive setting from POS Settings
+		 * Load tax rules from POS Profile.
+		 * Tax-inclusive mode is inferred from the returned rules.
 		 */
 		try {
 			const result = await getTaxesResource.submit({ pos_profile: profileName })
 			taxRules.value = result?.data || result || []
 
-			// Load tax inclusive setting from POS Settings if provided
-			if (posSettings && posSettings.tax_inclusive !== undefined) {
-				taxInclusive.value = posSettings.tax_inclusive || false
-			}
-
-			// Recalculate all items with new tax rules and tax inclusive setting
+			// Recalculate all items with new tax rules
 			invoiceItems.value.forEach((item) => recalculateItem(item))
 
 			// Rebuild cache after bulk operation
@@ -985,19 +995,6 @@ export function useInvoice() {
 			taxRules.value = []
 			return []
 		}
-	}
-
-	function setTaxInclusive(value) {
-		/**
-		 * Set tax inclusive mode and recalculate all items
-		 */
-		taxInclusive.value = value
-
-		// Recalculate all items with new tax inclusive setting
-		invoiceItems.value.forEach((item) => recalculateItem(item))
-
-		// Rebuild cache after bulk operation
-		rebuildIncrementalCache()
 	}
 
 	return {
@@ -1041,7 +1038,6 @@ export function useInvoice() {
 		clearCart,
 		setDefaultCustomer,
 		loadTaxRules,
-		setTaxInclusive,
 		recalculateItem,
 		rebuildIncrementalCache,
 

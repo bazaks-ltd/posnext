@@ -71,7 +71,6 @@ def get_pos_settings(pos_profile):
 			"POS Settings",
 			{"pos_profile": pos_profile, "enabled": 1},
 			[
-				"tax_inclusive",
 				"allow_user_to_edit_additional_discount",
 				"allow_user_to_edit_item_discount",
 				"use_percentage_discount",
@@ -91,7 +90,6 @@ def get_pos_settings(pos_profile):
 		# Return settings or defaults if not found
 		if not pos_settings:
 			return {
-				"tax_inclusive": 0,
 				"allow_user_to_edit_additional_discount": 0,
 				"allow_user_to_edit_item_discount": 1,
 				"use_percentage_discount": 0,

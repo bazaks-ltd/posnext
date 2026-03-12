@@ -36,7 +36,6 @@
   "allow_print_draft_invoices",
   "section_break_pricing",
   "decimal_precision",
-  "tax_inclusive",
   "section_break_customer",
   "allow_customer_purchase_order",
   "allow_duplicate_customer_names",
@@ -274,13 +273,6 @@
    "label": "Decimal Precision",
    "options": "2\n3\n4\n5\n6",
    "description": "Number of decimal places for amounts"
-  },
-  {
-   "default": "0",
-   "fieldname": "tax_inclusive",
-   "fieldtype": "Check",
-   "label": "Tax Inclusive",
-   "description": "Automatically set taxes as included in item prices. When enabled, displayed prices include tax amounts."
   },
   {
    "collapsible": 1,

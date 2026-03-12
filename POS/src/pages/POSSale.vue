@@ -990,28 +990,6 @@ onMounted(async () => {
 	onPricingChanged(async ({ changes }) => {
 		log.info('Event: Pricing settings changed', changes)
 
-		// Update tax_inclusive setting if it changed
-		if (changes.hasOwnProperty('tax_inclusive')) {
-			const newTaxInclusive = changes.tax_inclusive.new
-			log.info(`Updating tax_inclusive from ${changes.tax_inclusive.old} to ${newTaxInclusive}`)
-
-			// Update the cart store tax inclusive setting
-			cartStore.setTaxInclusive(newTaxInclusive)
-
-			// Reload tax rules to ensure they're applied with the new setting
-			// This is critical because tax_inclusive affects how taxes are calculated
-			try {
-				log.info('Reloading tax rules with new tax_inclusive setting...')
-				await cartStore.loadTaxRules(
-					shiftStore.currentShift?.pos_profile,
-					{ tax_inclusive: newTaxInclusive }
-				)
-				log.info('Tax rules reloaded successfully')
-			} catch (error) {
-				log.error('Failed to reload tax rules:', error)
-			}
-		}
-
 		// Recalculate cart items if there are any
 		if (cartStore.invoiceItems.length > 0) {
 			cartStore.invoiceItems.forEach(item => {
@@ -1019,16 +997,7 @@ onMounted(async () => {
 			})
 			cartStore.rebuildIncrementalCache()
 
-			const message = changes.hasOwnProperty('tax_inclusive')
-				? __('Tax mode updated. Cart recalculated with new tax settings.')
-				: __('Discount settings changed. Cart recalculated.')
-
-			showSuccess(message)
-		} else if (changes.hasOwnProperty('tax_inclusive')) {
-			// Show feedback even if cart is empty
-			showSuccess(changes.tax_inclusive.new
-				? __('Prices are now tax-inclusive. This will apply to new items added to cart.')
-				: __('Prices are now tax-exclusive. This will apply to new items added to cart.'))
+			showSuccess(__('Discount settings changed. Cart recalculated.'))
 		}
 	})
 
@@ -1109,8 +1078,8 @@ onMounted(async () => {
 					settings: posSettingsStore.settings
 				})
 
-				// Load tax rules with tax_inclusive setting from POS Settings
-				await cartStore.loadTaxRules(shiftStore.profileName, posSettingsStore.settings)
+				// Load tax rules from POS Profile (tax-inclusive is inferred from template rules)
+				await cartStore.loadTaxRules(shiftStore.profileName)
 
 				// Set default customer from POS Profile if configured
 				await cartStore.setDefaultCustomer()
@@ -1435,10 +1404,10 @@ async function handleShiftOpened() {
 	if (shiftStore.currentProfile) {
 		cartStore.posProfile = shiftStore.profileName
 		cartStore.posOpeningShift = shiftStore.currentShift?.name
-		// Load POS Settings first to get tax_inclusive setting
+		// Load POS Settings
 		await posSettingsStore.loadSettings(shiftStore.profileName)
-		// Load tax rules with tax_inclusive setting
-		await cartStore.loadTaxRules(shiftStore.profileName, posSettingsStore.settings)
+		// Load tax rules from POS Profile (tax-inclusive is inferred from template rules)
+		await cartStore.loadTaxRules(shiftStore.profileName)
 	}
 	showSuccess(__("You can now start making sales"))
 }

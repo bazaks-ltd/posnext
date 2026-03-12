@@ -273,11 +273,6 @@
 											<h4 class="text-sm font-semibold text-gray-900">{{ __('Pricing & Discounts') }}</h4>
 										</div>
 										<div class="flex flex-col gap-3">
-											<CheckboxField
-												v-model="settings.tax_inclusive"
-												:label="__('Tax Inclusive')"
-												:description="__('When enabled, displayed prices include tax. When disabled, tax is calculated separately. Changes apply immediately to your cart when you save.')"
-											/>
 											<NumberField
 												v-model="settings.max_discount_allowed"
 												:label="__('Max Discount (%)')"
@@ -416,7 +411,6 @@ const settings = ref({
 	allow_partial_payment: 0,
 	silent_print: 0,
 	allow_negative_stock: 0,
-	tax_inclusive: 0,
 })
 
 // Stock Sync Settings (localStorage persisted)
@@ -522,24 +516,6 @@ watch(
 	{ immediate: true },
 )
 
-// Watch for tax_inclusive changes to provide immediate feedback
-const originalTaxInclusive = ref(null)
-watch(
-	() => settings.value.tax_inclusive,
-	(newValue, oldValue) => {
-		// Store original value on first load
-		if (originalTaxInclusive.value === null && oldValue !== undefined) {
-			originalTaxInclusive.value = oldValue
-		}
-
-		// Only show feedback if value actually changed from original
-		if (originalTaxInclusive.value !== null && newValue !== originalTaxInclusive.value) {
-			const mode = newValue ? 'inclusive' : 'exclusive'
-			log.info(`Tax mode toggled to: ${mode}`)
-		}
-	}
-)
-
 // Methods
 function handleClose() {
 	show.value = false
@@ -585,7 +561,6 @@ async function saveSettings() {
 	const oldWarehouse = props.currentWarehouse
 	const warehouseChanged = selectedWarehouse.value !== oldWarehouse
 	const negativeStockChanged = originalAllowNegativeStock.value !== settings.value.allow_negative_stock
-	const taxInclusiveChanged = originalTaxInclusive.value !== null && originalTaxInclusive.value !== settings.value.tax_inclusive
 
 	// Capture old settings for change detection
 	const oldSettings = {
@@ -608,7 +583,6 @@ async function saveSettings() {
 			settings.value.pos_profile = props.posProfile
 			// Update original values after successful save
 			originalAllowNegativeStock.value = result.allow_negative_stock
-			originalTaxInclusive.value = result.tax_inclusive
 		}
 
 		// Update warehouse in POS Profile if changed
@@ -651,14 +625,8 @@ async function saveSettings() {
 
 		// Show success toast for other changes
 		let successMessage = __("Settings saved successfully")
-		if (warehouseChanged && taxInclusiveChanged) {
-			successMessage = __("Settings saved, warehouse updated, and tax mode changed. Cart will be recalculated.")
-		} else if (warehouseChanged) {
+		if (warehouseChanged) {
 			successMessage = __("Settings saved and warehouse updated. Reloading stock...")
-		} else if (taxInclusiveChanged) {
-			successMessage = settings.value.tax_inclusive
-				? __('Settings saved. Tax mode is now "inclusive". Cart will be recalculated.')
-				: __('Settings saved. Tax mode is now "exclusive". Cart will be recalculated.')
 		}
 
 		showSuccess(successMessage)

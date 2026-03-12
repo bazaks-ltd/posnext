@@ -180,12 +180,21 @@ def _validate_stock_on_invoice(invoice_doc):
     ):
         return
 
-    # Collect all stock items to check
-    items_to_check = [d.as_dict() for d in invoice_doc.items if d.get("is_stock_item")]
+    # Collect all stock items to check.
+    # Exclude rows with serial_and_batch_bundle: ERPNext validates bundle stock on submit.
+    items_to_check = [
+        d.as_dict()
+        for d in invoice_doc.items
+        if d.get("is_stock_item") and not d.get("serial_and_batch_bundle")
+    ]
 
-    # Include packed items if present
+    # Include packed items if present (same exclusions)
     if hasattr(invoice_doc, "packed_items"):
-        items_to_check.extend([d.as_dict() for d in invoice_doc.packed_items])
+        items_to_check.extend([
+            d.as_dict()
+            for d in invoice_doc.packed_items
+            if d.get("is_stock_item") and not d.get("serial_and_batch_bundle")
+        ])
 
     # Check for stock errors
     errors = _collect_stock_errors(items_to_check)

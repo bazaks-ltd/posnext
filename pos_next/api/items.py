@@ -595,7 +595,9 @@ def get_item_variants(template_item, pos_profile):
 			if not price and variant_prices:
 				# Fallback to first available price if stock UOM price not found
 				price = next(iter(variant_prices.values()), None)
-			variant["rate"] = price or 0
+			price = price or 0
+			variant["rate"] = price
+			variant["price_list_rate"] = price  # For discount/base calculations in cart
 
 			# Get stock from pre-loaded stock map (performance optimization)
 			variant["actual_qty"] = stock_map.get(variant["item_code"], 0)
