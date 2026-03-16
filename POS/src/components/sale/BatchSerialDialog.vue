@@ -94,8 +94,9 @@
 									<span class="text-xs text-gray-600">
 										{{ __('Available: {0}', [batch.qty]) }}
 									</span>
-									<span v-if="batch.expiry_date" class="text-xs text-gray-600">
-										{{ __('Exp: {0}', [formatDate(batch.expiry_date)]) }}
+									<span v-if="batch.expiry_date" class="text-xs">
+										<span class="font-bold text-red-600">{{ __('Exp') }}:</span>
+										<span class="font-bold text-red-600">{{ formatDate(batch.expiry_date) }}</span>
 									</span>
 								</div>
 							</div>
@@ -335,11 +336,9 @@ const batchesResource = createResource({
 			for (const batch of data) {
 				if (batch.qty > 0 && batch.batch_no) {
 					try {
-						// Fetch batch metadata (expiry date, disabled status)
-						const batchDoc = await call("frappe.client.get_value", {
-							doctype: "Batch",
-							filters: { name: batch.batch_no },
-							fieldname: ["expiry_date", "disabled"],
+						// Fetch batch metadata via pos_next API (no Batch doctype permission required)
+						const batchDoc = await call("pos_next.api.items.get_batch_info", {
+							batch_no: batch.batch_no,
 						})
 						
 						// Only include non-disabled, non-expired batches
@@ -389,16 +388,16 @@ onError(error) {
 // Fallback method if get_batch_qty fails
 async function loadBatchesFallback() {
 	try {
-		const batches = await call("frappe.client.get_list", {
-			doctype: "Batch",
-			filters: {
-				item: props.item?.item_code,
-				disabled: 0,
-			},
-			fields: ["name as batch_no", "expiry_date", "batch_qty as qty"],
-			limit_page_length: 100,
-			order_by: "expiry_date asc, creation asc",
+		// Use get_batch_serial_details (pos_next) to avoid Batch list permission; then enrich with get_batch_info
+		const result = await call("pos_next.api.items.get_batch_serial_details", {
+			item_code: props.item?.item_code,
+			warehouse: props.warehouse,
 		})
+		const batches = (result?.batches || []).map((b) => ({
+			batch_no: b.batch_no,
+			qty: b.qty,
+			expiry_date: b.expiry_date,
+		}))
 		
 	// Filter non-expired batches with qty > 0
 	availableBatches.value = batches.filter((batch) => {

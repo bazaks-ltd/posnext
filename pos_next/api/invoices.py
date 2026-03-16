@@ -21,6 +21,27 @@ except Exception:  # pragma: no cover - ERPNext not installed in some environmen
     erpnext_apply_pricing_rule = None
     erpnext_get_applied_pricing_rules = None
 
+# Patch Serial and Batch Bundle submit so POS invoice submit can complete when user
+# does not have "Serial and Batch Bundle" write permission (bundle is submitted from SLE on_submit).
+def _apply_serial_batch_bundle_submit_patch():
+    from erpnext.stock import serial_batch_bundle as _sbb
+    if getattr(_sbb.SerialBatchBundle, "_pos_next_ignore_permissions_patched", False):
+        return
+    _original = _sbb.SerialBatchBundle.submit_serial_and_batch_bundle
+
+    def _submit_serial_and_batch_bundle_with_ignore_permissions(self):
+        doc = frappe.get_doc("Serial and Batch Bundle", self.sle.serial_and_batch_bundle)
+        self.validate_actual_qty(doc)
+        doc.flags.ignore_voucher_validation = True
+        doc.flags.ignore_permissions = True
+        doc.submit()
+
+    _sbb.SerialBatchBundle.submit_serial_and_batch_bundle = _submit_serial_and_batch_bundle_with_ignore_permissions
+    _sbb.SerialBatchBundle._pos_next_ignore_permissions_patched = True
+
+
+_apply_serial_batch_bundle_submit_patch()
+
 
 # ==========================================
 # Helper Functions
@@ -208,12 +229,13 @@ def _auto_set_return_batches(invoice_doc):
     """Assign batch numbers for return invoices without a source invoice.
 
     When an item requires a batch number, this function allocates the first
-    available batch in FIFO order. If no batches exist in the selected
-    warehouse, an informative error is raised.
+    available batch in FIFO order. Only non-expired, enabled batches with
+    qty in the selected warehouse are considered.
     """
     if not invoice_doc.is_return or invoice_doc.get("return_against"):
         return
 
+    today = nowdate()
     for d in invoice_doc.items:
         if not d.get("item_code") or not d.get("warehouse"):
             continue
@@ -225,9 +247,23 @@ def _auto_set_return_batches(invoice_doc):
             )
             batch_list = [b for b in batch_list if flt(b.get("qty")) > 0]
 
-            if batch_list:
-                # FIFO: batches are already sorted by posting/expiry in ERPNext
-                d.batch_no = batch_list[0].get("batch_no")
+            # Exclude expired and disabled batches (same rules as get_item_detail / get_batch_serial_details)
+            eligible = []
+            for b in batch_list:
+                batch_no = b.get("batch_no")
+                if not batch_no:
+                    continue
+                batch_doc = frappe.get_cached_doc("Batch", batch_no)
+                is_not_expired = (
+                    batch_doc.expiry_date in (None, "")
+                    or str(batch_doc.expiry_date) > str(today)
+                )
+                if is_not_expired and batch_doc.disabled == 0:
+                    eligible.append(b)
+
+            if eligible:
+                # FIFO: first in list (ERPNext get_batch_qty returns expiry order)
+                d.batch_no = eligible[0].get("batch_no")
             else:
                 frappe.throw(
                     _("No batches available in {0} for {1}.").format(
@@ -266,7 +302,18 @@ def validate_cart_items(items, pos_profile=None):
 
 @frappe.whitelist()
 def validate_return_items(original_invoice_name, return_items, doctype="Sales Invoice"):
-    """Ensure that return items do not exceed the quantity from the original invoice."""
+    """Ensure that return items do not exceed the quantity from the original invoice.
+
+    Return policy (batch items):
+    - Validation is at item_code level only: total return qty per item cannot exceed
+      total sold qty for that item on the original invoice.
+    - Batch-level validation is not enforced: the customer may return against any
+      valid (non-expired, enabled) batch in the warehouse when creating a return
+      without linking to the original invoice. When return_against is set, batches
+      are not required to match the original invoice batches.
+    - For return invoices without return_against, _auto_set_return_batches assigns
+      the first eligible batch (FIFO, non-expired, enabled) in the item's warehouse.
+    """
     original_invoice = frappe.get_doc(doctype, original_invoice_name)
     original_item_qty = {}
 
@@ -524,9 +571,31 @@ def update_invoice(data):
         raise
 
 
+def _delete_draft_invoice_on_submit_error(invoice_name):
+    """
+    Remove a Sales Invoice that was left in draft (or submitted) after a submit failure.
+    Cancels first if submitted, then deletes. Logs but does not re-raise cleanup errors.
+    """
+    if not invoice_name or not frappe.db.exists("Sales Invoice", invoice_name):
+        return
+    try:
+        current = frappe.get_doc("Sales Invoice", invoice_name)
+        if current.docstatus == 1:
+            current.flags.ignore_permissions = True
+            current.cancel()
+        frappe.delete_doc("Sales Invoice", invoice_name, force=True, ignore_permissions=True)
+        frappe.db.commit()
+    except Exception as cleanup_err:
+        frappe.log_error(
+            title="POS: Failed to delete draft invoice after submit error",
+            message=f"Invoice: {invoice_name}\nCleanup error: {cleanup_err}\n{frappe.get_traceback()}",
+        )
+
+
 @frappe.whitelist()
 def submit_invoice(invoice=None, data=None):
     """Submit the invoice (Step 2)."""
+    invoice_name_to_cleanup = None
     try:
 
         # Handle different calling conventions
@@ -574,6 +643,8 @@ def submit_invoice(invoice=None, data=None):
         else:
             invoice_doc = frappe.get_doc(doctype, invoice_name)
             invoice_doc.update(invoice)
+
+        invoice_name_to_cleanup = invoice_doc.name
 
         # Ensure update_stock is set
         invoice_doc.update_stock = 1
@@ -649,35 +720,14 @@ def submit_invoice(invoice=None, data=None):
         frappe.flags.ignore_account_permission = True
         invoice_doc.save()
 
-        # Submit invoice with error handling
+        # Submit invoice with error handling (ignore_permissions so SLE -> Serial and Batch Bundle submit succeeds)
         # Note: Negative stock handling is now done through the CustomSalesInvoice override
         # which checks POS Settings in the update_stock_ledger method
         try:
+            invoice_doc.flags.ignore_permissions = True
             invoice_doc.submit()
         except Exception as submit_error:
-            # If submission fails, cleanup the invoice to prevent stock reservation issues
-            try:
-                # Reload to get current state
-                current_doc = frappe.get_doc("Sales Invoice", invoice_doc.name)
-
-                # If already submitted, must cancel before deleting
-                if current_doc.docstatus == 1:
-                    current_doc.flags.ignore_permissions = True
-                    current_doc.cancel()
-
-                # Now delete the cancelled/draft invoice
-                frappe.delete_doc(
-                    "Sales Invoice",
-                    invoice_doc.name,
-                    force=True,
-                    ignore_permissions=True,
-                )
-                frappe.db.commit()
-            except Exception:
-                # Silent fail on cleanup - don't hide original error
-                pass
-
-            # Re-raise the original submission error
+            _delete_draft_invoice_on_submit_error(invoice_doc.name)
             raise submit_error
 
         # Handle credit redemption after successful submission
@@ -712,6 +762,7 @@ def submit_invoice(invoice=None, data=None):
             "change_amount": getattr(invoice_doc, "change_amount", 0),
         }
     except Exception as e:
+        _delete_draft_invoice_on_submit_error(invoice_name_to_cleanup)
         frappe.log_error(frappe.get_traceback(), "Submit Invoice Error")
         raise
 

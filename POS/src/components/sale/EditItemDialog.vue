@@ -195,7 +195,7 @@
 								<h4 class="text-sm font-semibold text-gray-900">{{ batch.batch_no }}</h4>
 								<div class="flex items-center gap-3 mt-1">
 									<span class="text-xs text-gray-600">
-										{{ __('Qty: {0}', [batch.qty]) }}
+										{{ __('Qty: {0} {1}', [formatBatchQtyInUom(batch.qty), localUom]) }}
 									</span>
 								</div>
 							</div>
@@ -388,7 +388,7 @@
 								</div>
 								<div class="flex items-center gap-4 mt-1">
 									<span class="text-xs text-gray-600">
-										{{ __('Available: {0}', [batch.qty]) }}
+										{{ __('Available: {0} {1}', [formatBatchQtyInUom(batch.qty), localUom]) }}
 									</span>
 									<span v-if="batch.expiry_date" class="text-xs font-medium" :class="isExpiringSoon(batch.expiry_date) ? 'text-orange-600' : 'text-gray-600'">
 										{{ __('Expiry: {0}', [formatDate(batch.expiry_date)]) }}
@@ -410,7 +410,7 @@
 									@blur="() => validateBatchQtyManagement(batch)"
 									type="number"
 									min="0"
-									:max="settingsStore.currentProfile?.allow_negative_stock ? null : batch.qty"
+									:max="settingsStore.currentProfile?.allow_negative_stock ? null : maxBatchQtyInUom(batch)"
 									step="any"
 									:class="[
 										'w-16 px-2 py-1 text-sm font-semibold text-center border rounded focus:outline-none focus:ring-2',
@@ -422,7 +422,7 @@
 								<button
 									type="button"
 									@click="incrementBatchQtyManagement(batch)"
-									:disabled="!settingsStore.currentProfile?.allow_negative_stock && getBatchQtyForManagement(batch.batch_no) >= batch.qty"
+									:disabled="!settingsStore.currentProfile?.allow_negative_stock && getBatchQtyForManagement(batch.batch_no) >= maxBatchQtyInUom(batch)"
 									class="w-7 h-7 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 disabled:bg-gray-50 disabled:text-gray-300 text-gray-700 font-bold rounded transition-colors flex items-center justify-center"
 								>
 									+
@@ -532,6 +532,14 @@ const availableUoms = computed(() => {
 })
 
 const currencySymbol = computed(() => getCurrencySymbol(props.currency))
+
+// Conversion factor: selected UOM -> stock UOM (stock_qty = uom_qty * factor). Used so Manage Batches shows/edits in selected UOM.
+const conversionFactorToStock = computed(() => {
+	if (!localItem.value || !localUom.value) return 1
+	if (localUom.value === (localItem.value.stock_uom || "")) return 1
+	const row = localItem.value.item_uoms?.find((u) => u.uom === localUom.value)
+	return row && Number(row.conversion_factor) > 0 ? Number(row.conversion_factor) : 1
+})
 
 // Initialize local state when item changes
 watch(
@@ -646,6 +654,7 @@ function incrementQuantity() {
 	const step = getSmartStep(localQuantity.value)
 	localQuantity.value = Math.round((localQuantity.value + step) * 10000) / 10000
 	calculateTotals()
+	syncBundleBatchesToQuantity()
 }
 
 function decrementQuantity() {
@@ -655,27 +664,27 @@ function decrementQuantity() {
 	if (newQty > 0) {
 		localQuantity.value = newQty
 		calculateTotals()
+		syncBundleBatchesToQuantity()
 	}
 }
 
 function handleQuantityInput() {
 	// Allow any value during typing, just recalculate totals
-	// Don't validate or reset - let user type freely
 	if (localQuantity.value > 0 && !isNaN(localQuantity.value)) {
 		calculateTotals()
+		syncBundleBatchesToQuantity()
 	}
 }
 
 function handleQuantityBlur() {
 	// Validate and fix the quantity when user is done editing (leaves the field)
 	if (!localQuantity.value || localQuantity.value <= 0 || isNaN(localQuantity.value)) {
-		// If invalid, reset to 1
 		localQuantity.value = 1
 	} else {
-		// Round to 4 decimal places for consistency
 		localQuantity.value = Math.round(localQuantity.value * 10000) / 10000
 	}
 	calculateTotals()
+	syncBundleBatchesToQuantity()
 }
 
 function handleUomChange() {
@@ -752,6 +761,47 @@ function calculateDiscount() {
 function calculateTotals() {
 	calculatedSubtotal.value = localRate.value * localQuantity.value
 	calculateDiscount()
+}
+
+/**
+ * When user changes main quantity, update bundle batch distribution so total matches.
+ * localQuantity is in selected UOM; bundle stores qty in stock UOM.
+ */
+function syncBundleBatchesToQuantity() {
+	if (!localItem.value?.has_batch_no || !localItem.value?.serial_and_batch_bundle || bundleBatches.value.length === 0) {
+		return
+	}
+	const cf = conversionFactorToStock.value
+	const newTotalStock = localQuantity.value * cf
+	const oldTotalStock = bundleBatches.value.reduce((sum, b) => sum + b.qty, 0)
+	if (oldTotalStock === newTotalStock) return
+
+	let batchesToUpdate = [...bundleBatches.value]
+	if (oldTotalStock > 0) {
+		const ratio = newTotalStock / oldTotalStock
+		batchesToUpdate = bundleBatches.value.map((b) => ({
+			batch_no: b.batch_no,
+			qty: Math.round(b.qty * ratio * 100) / 100,
+		}))
+		const calculatedTotal = batchesToUpdate.reduce((sum, b) => sum + b.qty, 0)
+		if (calculatedTotal !== newTotalStock && batchesToUpdate.length > 0) {
+			const diff = newTotalStock - calculatedTotal
+			batchesToUpdate[batchesToUpdate.length - 1].qty += diff
+		}
+	} else {
+		batchesToUpdate[0].qty = newTotalStock
+		for (let i = 1; i < batchesToUpdate.length; i++) {
+			batchesToUpdate[i].qty = 0
+		}
+	}
+	bundleBatches.value = batchesToUpdate
+	if (showBatchManagement.value) {
+		batchQtys.value.clear()
+		for (const batch of bundleBatches.value) {
+			const qtyInUom = cf > 0 ? Math.round((batch.qty / cf) * 10000) / 10000 : batch.qty
+			batchQtys.value.set(batch.batch_no, qtyInUom)
+		}
+	}
 }
 
 function removeSerial(serialNo) {
@@ -869,13 +919,9 @@ async function loadBatchExpiry(batchNo) {
 	if (!batchNo) return
 	
 	try {
-		// Use frappe-ui's call function
-		const response = await call("frappe.client.get_value", {
-			doctype: "Batch",
-			filters: { name: batchNo },
-			fieldname: ["expiry_date"]
+		const response = await call("pos_next.api.items.get_batch_info", {
+			batch_no: batchNo,
 		})
-		
 		if (response && response.expiry_date) {
 			currentBatchExpiry.value = response.expiry_date
 		}
@@ -910,16 +956,12 @@ async function loadAvailableBatches() {
 			for (const batch of batches) {
 				if (batch.qty > 0 && batch.batch_no) {
 					try {
-						const batchDoc = await call("frappe.client.get_value", {
-							doctype: "Batch",
-							filters: { name: batch.batch_no },
-							fieldname: ["expiry_date", "disabled"]
+						const batchDoc = await call("pos_next.api.items.get_batch_info", {
+							batch_no: batch.batch_no,
 						})
-						
-						if (batchDoc) {
+						if (batchDoc && Object.keys(batchDoc).length) {
 							const isNotExpired = !batchDoc.expiry_date || new Date(batchDoc.expiry_date) > new Date()
 							const isEnabled = batchDoc.disabled === 0 || batchDoc.disabled === undefined
-							
 							if (isNotExpired && isEnabled) {
 								batchesWithExpiry.push({
 									batch_no: batch.batch_no,
@@ -963,17 +1005,27 @@ async function loadAvailableBatches() {
 	}
 }
 
-// Batch management functions
+// Batch management functions (quantities in selected UOM; batch.qty from API is in stock UOM)
+function formatBatchQtyInUom(stockQty) {
+	const cf = conversionFactorToStock.value
+	return cf <= 0 ? stockQty : Math.round((stockQty / cf) * 10000) / 10000
+}
+
+function maxBatchQtyInUom(batch) {
+	return formatBatchQtyInUom(batch.qty)
+}
+
 function getBatchQtyForManagement(batchNo) {
 	return batchQtys.value.get(batchNo) || 0
 }
 
-function isBatchQtyExceedingAvailable(batch, qty) {
+function isBatchQtyExceedingAvailable(batch, qtyInUom) {
 	const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
 	if (allowNegativeStock) {
-		return false // No validation if negative stock is allowed
+		return false
 	}
-	return qty > batch.qty
+	const maxInUom = maxBatchQtyInUom(batch)
+	return qtyInUom > maxInUom
 }
 
 function updateBatchQtyManagement(batch, value) {
@@ -981,7 +1033,6 @@ function updateBatchQtyManagement(batch, value) {
 	if (qty <= 0) {
 		batchQtys.value.delete(batch.batch_no)
 	} else {
-		// Allow invalid quantities to be stored temporarily so error message can show
 		batchQtys.value.set(batch.batch_no, qty)
 	}
 }
@@ -989,21 +1040,19 @@ function updateBatchQtyManagement(batch, value) {
 function validateBatchQtyManagement(batch) {
 	const currentQty = getBatchQtyForManagement(batch.batch_no)
 	const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
-	if (!allowNegativeStock && currentQty > batch.qty) {
-		// Auto-correct to max available when input loses focus
-		batchQtys.value.set(batch.batch_no, batch.qty)
+	const maxInUom = maxBatchQtyInUom(batch)
+	if (!allowNegativeStock && currentQty > maxInUom) {
+		batchQtys.value.set(batch.batch_no, maxInUom)
 	}
 }
 
 function incrementBatchQtyManagement(batch) {
 	const currentQty = getBatchQtyForManagement(batch.batch_no)
 	const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
-	const maxQty = allowNegativeStock ? Infinity : batch.qty
-	
+	const maxQty = allowNegativeStock ? Infinity : maxBatchQtyInUom(batch)
 	if (currentQty < maxQty) {
 		updateBatchQtyManagement(batch, currentQty + 1)
 	}
-	// Inline error message will be shown automatically if quantity exceeds available stock
 }
 
 function decrementBatchQtyManagement(batch) {
@@ -1025,14 +1074,15 @@ function getTotalBatchQtyManagement() {
 const hasInvalidBatchQuantities = computed(() => {
 	const allowNegativeStock = settingsStore.currentProfile?.allow_negative_stock || false
 	if (allowNegativeStock) {
-		return false // No validation if negative stock is allowed
+		return false
 	}
-	
-	for (const [batchNo, qty] of batchQtys.value.entries()) {
-		if (qty > 0) {
+	const cf = conversionFactorToStock.value
+	for (const [batchNo, qtyInUom] of batchQtys.value.entries()) {
+		if (qtyInUom > 0) {
 			const batch = availableBatches.value.find(b => b.batch_no === batchNo)
-			if (batch && qty > batch.qty) {
-				return true
+			if (batch) {
+				const maxInUom = cf > 0 ? batch.qty / cf : batch.qty
+				if (qtyInUom > maxInUom) return true
 			}
 		}
 	}
@@ -1048,19 +1098,22 @@ async function confirmBatchManagement() {
 		return // Don't proceed if validation fails (user should see inline error messages)
 	}
 	
+	const cf = conversionFactorToStock.value
 	const selectedBatches = []
-	for (const [batchNo, qty] of batchQtys.value.entries()) {
-		if (qty > 0) {
-			selectedBatches.push({ batch_no: batchNo, qty })
+	for (const [batchNo, qtyInUom] of batchQtys.value.entries()) {
+		if (qtyInUom > 0) {
+			// API expects qty in stock UOM
+			const qtyStock = Math.round(qtyInUom * cf * 10000) / 10000
+			selectedBatches.push({ batch_no: batchNo, qty: qtyStock })
 		}
 	}
 
 	if (selectedBatches.length > 0) {
-		// Calculate total quantity
-		const totalQty = selectedBatches.reduce((sum, b) => sum + b.qty, 0)
-		localQuantity.value = totalQty
+		// Total in selected UOM (for localQuantity)
+		const totalQtyInUom = [...batchQtys.value.values()].reduce((sum, q) => sum + (q || 0), 0)
+		localQuantity.value = totalQtyInUom
 		
-		// Update bundle batches for display
+		// Update bundle batches for display (keep stock UOM for consistency with API)
 		bundleBatches.value = selectedBatches.map(b => ({
 			batch_no: b.batch_no,
 			qty: b.qty
@@ -1105,7 +1158,7 @@ async function confirmBatchManagement() {
 			// Immediately update the cart item with the new bundle data
 			// This ensures the changes persist even if user closes dialog without clicking "Update Item"
 			await cartStore.updateItemDetails(localItem.value.item_code, {
-				quantity: totalQty,
+				quantity: totalQtyInUom,
 				serial_and_batch_bundle: localItem.value.serial_and_batch_bundle,
 				_bundle_data: {
 					entries: selectedBatches
@@ -1140,15 +1193,16 @@ function isExpiringSoon(dateStr) {
 // Watch for batch management dialog open
 watch(showBatchManagement, (newVal) => {
 	if (newVal) {
-		// Initialize with current bundle batches or single batch
 		batchQtys.value.clear()
+		const cf = conversionFactorToStock.value
 		if (bundleBatches.value.length > 0) {
-			// Initialize from bundle
+			// Bundle stores qty in stock UOM; show in selected UOM
 			for (const batch of bundleBatches.value) {
-				batchQtys.value.set(batch.batch_no, batch.qty)
+				const qtyInUom = cf > 0 ? Math.round((batch.qty / cf) * 10000) / 10000 : batch.qty
+				batchQtys.value.set(batch.batch_no, qtyInUom)
 			}
 		} else if (localItem.value?.batch_no && localQuantity.value > 0) {
-			// Initialize from single batch
+			// Single batch: localQuantity is already in selected UOM
 			batchQtys.value.set(localItem.value.batch_no, localQuantity.value)
 		}
 		loadAvailableBatches()

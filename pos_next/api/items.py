@@ -252,6 +252,7 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 	max_discount = frappe.get_value("Item", item_code, "max_discount")
 
 	# Prepare args dict for get_item_details - only include necessary fields
+	# Include batch_no when provided so ERPNext returns batch-specific Item Price rate
 	args = frappe._dict(
 		{
 			"doctype": "Sales Invoice",
@@ -263,10 +264,15 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 			"price_list_currency": item.get("price_list_currency"),
 			"plc_conversion_rate": item.get("plc_conversion_rate"),
 			"conversion_rate": item.get("conversion_rate"),
+			"batch_no": item.get("batch_no") or None,
 		}
 	)
 
 	res = erpnext_get_item_details(args, doc)
+
+	# When batch was requested but no price found, flag for frontend (ensure Item Price per batch exists)
+	if item.get("batch_no") and flt(res.get("price_list_rate")) == 0 and flt(res.get("rate")) == 0:
+		res["batch_price_missing"] = True
 
 	if item.get("is_stock_item") and warehouse:
 		res["actual_qty"] = get_stock_availability(item_code, warehouse)
@@ -415,11 +421,14 @@ def get_item_stock(item_code, warehouse):
 
 @frappe.whitelist()
 def get_batch_serial_details(item_code, warehouse):
-	"""Get batch/serial number details"""
+	"""Get batch/serial number details for POS.
+
+	Batches: Uses warehouse-scoped stock (get_batch_qty), excludes expired and
+	disabled batches, sorted by expiry (FIFO). Aligns with get_item_detail().
+	Serial numbers: Active only, in the given warehouse.
+	"""
 	try:
-		# Check if item has batch
 		has_batch_no = frappe.db.get_value("Item", item_code, "has_batch_no")
-		# Check if item has serial
 		has_serial_no = frappe.db.get_value("Item", item_code, "has_serial_no")
 
 		result = {
@@ -430,31 +439,42 @@ def get_batch_serial_details(item_code, warehouse):
 			"serial_nos": [],
 		}
 
-		if has_batch_no:
-			# Get available batches (note: qty should come from get_batch_qty)
-			batches = frappe.db.sql(
-				"""
-				SELECT batch_no, batch_qty as qty, expiry_date
-				FROM `tabBatch`
-				WHERE item = %s AND batch_qty > 0
-				ORDER BY expiry_date ASC, creation ASC
-				""",
-				item_code,
-				as_dict=1,
-			)
-			result["batches"] = batches
+		if has_batch_no and warehouse:
+			# Use warehouse-scoped batch qty (same as get_item_detail); exclude expired/disabled
+			today = nowdate()
+			batch_list = get_batch_qty(warehouse=warehouse, item_code=item_code)
+			if batch_list:
+				for batch in batch_list:
+					if not (batch.qty > 0 and getattr(batch, "batch_no", None)):
+						continue
+					batch_doc = frappe.get_cached_doc("Batch", batch.batch_no)
+					is_not_expired = (
+						str(batch_doc.expiry_date) > str(today)
+						or batch_doc.expiry_date in ["", None]
+					)
+					if is_not_expired and batch_doc.disabled == 0:
+						result["batches"].append({
+							"batch_no": batch.batch_no,
+							"qty": batch.qty,
+							"expiry_date": batch_doc.expiry_date,
+						})
+				# FIFO: sort by expiry (null last)
+				result["batches"].sort(
+					key=lambda b: (b.get("expiry_date") is None, b.get("expiry_date") or "")
+				)
+		elif has_batch_no and not warehouse:
+			result["batches"] = []
 
-		if has_serial_no:
-			# Get available serial numbers
-			serial_nos = frappe.db.sql(
-				"""
-				SELECT name as serial_no, warehouse
-				FROM `tabSerial No`
-				WHERE item_code = %s AND warehouse = %s AND status = 'Active'
-				ORDER BY creation ASC
-				""",
-				(item_code, warehouse),
-				as_dict=1,
+		if has_serial_no and warehouse:
+			serial_nos = frappe.get_all(
+				"Serial No",
+				filters={
+					"item_code": item_code,
+					"warehouse": warehouse,
+					"status": "Active",
+				},
+				fields=["name as serial_no"],
+				order_by="creation asc",
 			)
 			result["serial_nos"] = serial_nos
 
@@ -1268,8 +1288,27 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 
 
 @frappe.whitelist()
-def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):
-	"""Get detailed item info including price, tax, stock"""
+def get_batch_info(batch_no):
+	"""
+	Return batch metadata (expiry_date, disabled) without requiring Batch doctype read permission.
+	Used by POS frontend when selecting batches; avoids PermissionError for Batch.
+	"""
+	if not batch_no:
+		return {}
+	try:
+		batch_doc = frappe.get_cached_doc("Batch", batch_no)
+		return {
+			"expiry_date": batch_doc.expiry_date,
+			"disabled": batch_doc.disabled,
+			"manufacturing_date": getattr(batch_doc, "manufacturing_date", None),
+		}
+	except Exception:
+		return {}
+
+
+@frappe.whitelist()
+def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None, batch_no=None):
+	"""Get detailed item info including price, tax, stock. Pass batch_no for batch-specific Item Price rate."""
 	try:
 		# Parse pos_profile if it's a JSON string
 		if isinstance(pos_profile, str):
@@ -1305,6 +1344,9 @@ def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):
 		# Include UOM if provided to fetch correct price list rate
 		if uom:
 			item["uom"] = uom
+		# Include batch_no to get batch-specific Item Price rate (avoids zero rate when only batch prices exist)
+		if batch_no:
+			item["batch_no"] = batch_no
 
 		return get_item_detail(
 			item=json.dumps(item),

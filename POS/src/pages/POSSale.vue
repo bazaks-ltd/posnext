@@ -1961,35 +1961,52 @@ async function handleApplyOffer(offer) {
 	}
 }
 
-function handleBatchSerialSelected(batchSerial) {
-	if (cartStore.pendingItem) {
-		try {
-			console.log("handleBatchSerialSelected received:", batchSerial)
-			
-			// Create ONE cart item with bundle reference
-			const qty = batchSerial.quantity || cartStore.pendingItemQty
-			const itemToAdd = {
-				...cartStore.pendingItem,
-				quantity: qty,
-				...batchSerial,
-			}
-			
-			// Add serial_and_batch_bundle reference if available
-			if (batchSerial.serial_and_batch_bundle) {
-				itemToAdd.serial_and_batch_bundle = batchSerial.serial_and_batch_bundle
-			}
-			
-			// Add bundle_data for display purposes
-			if (batchSerial._bundle_data) {
-				itemToAdd._bundle_data = batchSerial._bundle_data
-			}
-			
-			console.log("Adding item to cart:", itemToAdd)
-			cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile)
-			cartStore.clearPendingItem()
-		} catch (error) {
-			showError(error.message)
+async function handleBatchSerialSelected(batchSerial) {
+	if (!cartStore.pendingItem) return
+	try {
+		const qty = batchSerial.quantity || cartStore.pendingItemQty
+		const itemToAdd = {
+			...cartStore.pendingItem,
+			quantity: qty,
+			...batchSerial,
 		}
+		if (batchSerial.serial_and_batch_bundle) {
+			itemToAdd.serial_and_batch_bundle = batchSerial.serial_and_batch_bundle
+		}
+		if (batchSerial._bundle_data) {
+			itemToAdd._bundle_data = batchSerial._bundle_data
+		}
+
+		// For batch items: refetch item details with selected batch_no so rate comes from Item Price per batch
+		const firstBatchNo = batchSerial.batch_no || (batchSerial.batches && batchSerial.batches[0]?.batch_no)
+		if (cartStore.pendingItem.has_batch_no && firstBatchNo) {
+			try {
+				const profile = shiftStore.currentProfile
+				const posProfileName = profile?.name || profile?.pos_profile
+				const itemDetails = await cartStore.getItemDetailsResource.submit({
+					item_code: cartStore.pendingItem.item_code,
+					pos_profile: posProfileName,
+					customer: cartStore.customer?.name || cartStore.customer,
+					qty,
+					uom: cartStore.pendingItem.uom,
+					batch_no: firstBatchNo,
+				})
+				if (itemDetails) {
+					itemToAdd.rate = itemDetails.price_list_rate ?? itemDetails.rate ?? itemToAdd.rate
+					itemToAdd.price_list_rate = itemDetails.price_list_rate ?? itemDetails.rate ?? itemToAdd.price_list_rate
+					if (itemDetails.batch_price_missing) {
+						showWarning(__('No Item Price found for this batch. Please add an Item Price for batch {0}.', [firstBatchNo]))
+					}
+				}
+			} catch (err) {
+				console.warn('Failed to fetch batch rate, using existing rate:', err)
+			}
+		}
+
+		cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile)
+		cartStore.clearPendingItem()
+	} catch (error) {
+		showError(error.message)
 	}
 }
 

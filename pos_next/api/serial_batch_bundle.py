@@ -1,135 +1,107 @@
+import json
+
 import frappe
 from frappe import _
+from frappe.utils import flt, now_datetime, nowdate
+
+from erpnext.stock.doctype.batch.batch import get_batch_qty
+
+
+def _validate_batch_for_bundle(batch_no, item_code, warehouse, requested_qty):
+	"""
+	Validate batch: belongs to item, has enough qty in warehouse, not expired, not disabled.
+	Returns available qty in warehouse; throws if invalid.
+	"""
+	if not frappe.db.exists("Batch", batch_no):
+		frappe.throw(_("Batch {0} does not exist").format(batch_no))
+
+	batch_doc = frappe.get_cached_doc("Batch", batch_no)
+	if batch_doc.item != item_code:
+		frappe.throw(
+			_("Batch {0} does not belong to item {1}").format(batch_no, item_code)
+		)
+	if batch_doc.disabled:
+		frappe.throw(_("Batch {0} is disabled").format(batch_no))
+
+	today = nowdate()
+	if batch_doc.expiry_date and str(batch_doc.expiry_date) <= str(today):
+		frappe.throw(_("Batch {0} has expired").format(batch_no))
+
+	available = get_batch_qty(batch_no, warehouse) or 0
+	if flt(available) < flt(requested_qty):
+		frappe.throw(
+			_("Insufficient quantity for batch {0} in warehouse {1} (available: {2}, requested: {3})").format(
+				batch_no, warehouse, flt(available), flt(requested_qty)
+			)
+		)
+	return flt(available)
 
 
 @frappe.whitelist()
 def create_batch_bundle(item_code, warehouse, batches, type_of_transaction="Outward"):
 	"""
-	Create a Serial and Batch Bundle for multiple batches
-	
-	Args:
-		item_code: Item Code
-		warehouse: Warehouse
-		batches: List of dict with batch_no and qty (JSON string or list)
-		type_of_transaction: "Outward" for sales, "Inward" for purchase
-	
-	Returns:
-		Bundle name
+	Create a Serial and Batch Bundle for multiple batches.
+
+	Validates each batch: item match, qty available in warehouse, not expired, not disabled.
 	"""
 	try:
-		# Log incoming data for debugging
-		import json
-		frappe.logger().info("="*80)
-		frappe.logger().info("create_batch_bundle START")
-		frappe.logger().info(f"item_code: {item_code}, type: {type(item_code)}")
-		frappe.logger().info(f"warehouse: {warehouse}, type: {type(warehouse)}")
-		frappe.logger().info(f"batches: {batches}, type: {type(batches)}")
-		frappe.logger().info(f"type_of_transaction: {type_of_transaction}, type: {type(type_of_transaction)}")
-		frappe.logger().info("="*80)
-		
-		# Also print to console for immediate visibility
-		print("="*80)
-		print("create_batch_bundle called")
-		print(f"item_code: {item_code}, type: {type(item_code)}")
-		print(f"warehouse: {warehouse}, type: {type(warehouse)}")
-		print(f"batches: {batches}, type: {type(batches)}")
-		print(f"type_of_transaction: {type_of_transaction}")
-		print("="*80)
-		
-		# Parse batches if it's a string (from JSON.stringify)
 		if isinstance(batches, str):
 			try:
 				batches = json.loads(batches)
-				frappe.logger().debug(f"Parsed batches from JSON string: {batches}")
 			except json.JSONDecodeError as je:
-				frappe.logger().error(f"Failed to parse batches JSON: {je}")
 				frappe.throw(_("Invalid batches JSON format"))
-		
-		# frappe.whitelist() might have already parsed it
-		frappe.logger().debug(f"Final batches type: {type(batches)}, value: {batches}")
-		
-		# Validate batches
-		if not batches:
+
+		if not batches or not isinstance(batches, list):
 			frappe.throw(_("No batches provided"))
-			
-		if not isinstance(batches, list):
-			frappe.throw(_(f"Batches must be a list, got {type(batches)}"))
-			
 		if len(batches) == 0:
 			frappe.throw(_("Batches list is empty"))
-		
-		# Create the bundle (don't set voucher_type without voucher_no)
-		frappe.logger().debug("Creating new Serial and Batch Bundle doc")
-		
-		# Import required utilities
-		from frappe.utils import now_datetime
-		
-		# Get company from warehouse (required for validation)
+
 		company = frappe.get_cached_value("Warehouse", warehouse, "company")
 		if not company:
 			frappe.throw(_("Warehouse {0} does not have a company set").format(warehouse))
-		
-		try:
-			bundle_doc = frappe.get_doc({
-				"doctype": "Serial and Batch Bundle",
-				"item_code": item_code,
-				"warehouse": warehouse,
-				"company": company,  # Required for validation
-				"type_of_transaction": type_of_transaction,
-				"has_batch_no": 1,
-				"has_serial_no": 0,
-				"posting_datetime": now_datetime(),  # Required for validation
-				"voucher_type": "POS Invoice",  # Required field, will be linked to actual invoice later
-			})
-			frappe.logger().debug(f"Bundle doc created successfully: {bundle_doc}")
-		except Exception as e:
-			frappe.logger().error(f"Error creating bundle doc: {e}")
-			raise
-		
-		# Add entries for each batch
-		frappe.logger().debug(f"Adding {len(batches)} batch entries")
-		for i, batch in enumerate(batches):
+
+		# Validate each batch before creating bundle
+		for batch in batches:
 			if not isinstance(batch, dict):
-				frappe.logger().warning(f"Batch {i} is not a dict: {type(batch)}")
-				continue
-				
+				frappe.throw(_("Each batch must be a dict with batch_no and qty"))
 			batch_no = batch.get("batch_no")
 			qty = batch.get("qty")
-			
-			if not batch_no or not qty:
-				frappe.logger().warning(f"Batch {i} missing batch_no or qty")
-				continue
-			
-			# For outward transactions, qty should be negative
-			qty = float(qty)
+			if not batch_no or qty is None:
+				frappe.throw(_("Each batch must have batch_no and qty"))
+			requested_qty = abs(flt(qty))
+			if type_of_transaction == "Outward" and requested_qty > 0:
+				_validate_batch_for_bundle(
+					batch_no, item_code, warehouse, requested_qty
+				)
+
+		bundle_doc = frappe.get_doc({
+			"doctype": "Serial and Batch Bundle",
+			"item_code": item_code,
+			"warehouse": warehouse,
+			"company": company,
+			"type_of_transaction": type_of_transaction,
+			"has_batch_no": 1,
+			"has_serial_no": 0,
+			"posting_datetime": now_datetime(),
+			"voucher_type": "POS Invoice",
+		})
+
+		for batch in batches:
+			batch_no = batch.get("batch_no")
+			qty = flt(batch.get("qty"))
 			if type_of_transaction == "Outward":
 				qty = -1 * abs(qty)
-			
-			frappe.logger().debug(f"Appending entry: batch_no={batch_no}, qty={qty}, warehouse={warehouse}")
-			try:
-				bundle_doc.append("entries", {
-					"batch_no": batch_no,
-					"qty": qty,
-					"warehouse": warehouse
-				})
-			except Exception as e:
-				frappe.logger().error(f"Error appending entry {i}: {e}")
-				raise
-		
-		# Validate that we have entries
+			bundle_doc.append("entries", {
+				"batch_no": batch_no,
+				"qty": qty,
+				"warehouse": warehouse,
+			})
+
 		if not bundle_doc.entries:
 			frappe.throw(_("No valid batch entries to create bundle"))
-		
-		# Save the bundle
-		frappe.logger().debug(f"Inserting bundle with {len(bundle_doc.entries)} entries")
-		try:
-			bundle_doc.insert(ignore_permissions=True)
-			frappe.logger().debug(f"Bundle inserted successfully: {bundle_doc.name}")
-		except Exception as e:
-			frappe.logger().error(f"Error inserting bundle: {e}")
-			frappe.logger().error(f"Traceback: {frappe.get_traceback()}")
-			raise
-		
+
+		bundle_doc.insert(ignore_permissions=True)
+
 		return {
 			"success": True,
 			"bundle_name": bundle_doc.name,
@@ -139,14 +111,17 @@ def create_batch_bundle(item_code, warehouse, batches, type_of_transaction="Outw
 					{
 						"batch_no": entry.batch_no,
 						"qty": abs(entry.qty),
-						"warehouse": entry.warehouse
+						"warehouse": entry.warehouse,
 					}
 					for entry in bundle_doc.entries
-				]
-			}
+				],
+			},
 		}
 	except Exception as e:
-		frappe.log_error(frappe.get_traceback(), "pos_next.api.serial_batch_bundle.create_batch_bundle")
+		frappe.log_error(
+			frappe.get_traceback(),
+			"pos_next.api.serial_batch_bundle.create_batch_bundle",
+		)
 		return {"success": False, "error": str(e)}
 
 
