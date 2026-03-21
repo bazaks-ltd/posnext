@@ -586,6 +586,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				uomData?.conversion_factor || itemDetails.conversion_factor || 1
 			cartItem.rate = itemDetails.price_list_rate || itemDetails.rate
 			cartItem.price_list_rate = itemDetails.price_list_rate
+			if (itemDetails.pos_item_tax_rate !== undefined) {
+				cartItem.pos_item_tax_rate = itemDetails.pos_item_tax_rate
+			}
 
 			recalculateItem(cartItem)
 
@@ -624,6 +627,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 						uomData?.conversion_factor || itemDetails.conversion_factor || 1
 					cartItem.rate = itemDetails.price_list_rate || itemDetails.rate
 					cartItem.price_list_rate = itemDetails.price_list_rate
+					if (itemDetails.pos_item_tax_rate !== undefined) {
+						cartItem.pos_item_tax_rate = itemDetails.pos_item_tax_rate
+					}
 				} catch (error) {
 					console.warn(
 						"Failed to fetch UOM details, using provided rate:",

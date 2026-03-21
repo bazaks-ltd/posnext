@@ -1744,6 +1744,9 @@ async function handleOptionSelected(option) {
 				rate: itemDetails.price_list_rate || itemDetails.rate,
 				price_list_rate: itemDetails.price_list_rate,
 			}
+			if (itemDetails.pos_item_tax_rate !== undefined) {
+				itemToAdd.pos_item_tax_rate = itemDetails.pos_item_tax_rate
+			}
 
 			if (itemToAdd.has_batch_no || itemToAdd.has_serial_no) {
 				cartStore.setPendingItem(itemToAdd, cartStore.pendingItemQty)
