@@ -7,7 +7,11 @@ from collections import defaultdict
 
 import frappe
 from erpnext.stock.doctype.batch.batch import get_batch_qty
-from erpnext.stock.get_item_details import get_item_details as erpnext_get_item_details
+from erpnext.stock.get_item_details import (
+	get_item_details as erpnext_get_item_details,
+	get_item_tax_map,
+	get_item_tax_template,
+)
 from frappe import _, as_json
 from frappe.utils import flt, nowdate
 
@@ -49,44 +53,50 @@ def get_stock_availability(item_code, warehouse):
 	return flt(rows[0].actual_qty) if rows else 0.0
 
 
-def _bulk_pos_item_tax_rate_percent(item_codes):
+def _pos_item_tax_rate_percent_for_item(
+	item_code, company, tax_category=None, posting_date=None
+):
 	"""
-	Sum tax_rate from each item's first Item Tax row's Item Tax Template.
+	Total Item Tax Template % for POS display — same resolution as Sales Invoice:
+	``get_item_tax_template`` (item rows first, then parent Item Group chain).
+	"""
+	if not item_code or not company or not frappe.db.exists("Item", item_code):
+		return 0.0
+	posting_date = posting_date or nowdate()
+	item = frappe.get_cached_doc("Item", item_code)
+	out = {}
+	args = {
+		"company": company,
+		"tax_category": tax_category,
+		"transaction_date": posting_date,
+		"posting_date": posting_date,
+	}
+	get_item_tax_template(args, item, out)
+	template = out.get("item_tax_template")
+	if not template:
+		return 0.0
+	tax_map = get_item_tax_map(company, template, as_json=False) or {}
+	return sum(flt(v) for v in tax_map.values())
 
-	When the Sales Taxes and Charges Template has rate 0 (common with tax-inclusive
-	setups), ERPNext still applies VAT from Item Tax Template — POS must mirror
-	that for cart tax display.
+
+def _bulk_pos_item_tax_rate_percent(item_codes, company, tax_category=None, posting_date=None):
 	"""
-	if not item_codes:
+	Map item_code -> summed tax % for all items in ``item_codes``.
+
+	Uses ERPNext's template resolution (item + item-group parents), not only
+	``tabItem Tax`` rows on the Item document.
+	"""
+	if not item_codes or not company:
 		return {}
 	codes = list(dict.fromkeys(item_codes))
-	out = {code: 0.0 for code in codes}
-	rows = frappe.get_all(
-		"Item Tax",
-		filters={"parent": ["in", codes]},
-		fields=["parent", "item_tax_template", "idx"],
-	)
-	rows.sort(key=lambda r: (r.get("parent") or "", r.get("idx") or 0))
-	first_template_by_parent = {}
-	for row in rows:
-		tmpl = row.get("item_tax_template")
-		if not tmpl or row.parent in first_template_by_parent:
-			continue
-		first_template_by_parent[row.parent] = tmpl
-	if not first_template_by_parent:
-		return out
-	rate_by_template = {}
-	for tmpl in set(first_template_by_parent.values()):
-		try:
-			tt = frappe.get_cached_doc("Item Tax Template", tmpl)
-			rate_by_template[tmpl] = sum(
-				flt(tr.tax_rate) for tr in (tt.taxes or [])
+	return {
+		code: flt(
+			_pos_item_tax_rate_percent_for_item(
+				code, company, tax_category=tax_category, posting_date=posting_date
 			)
-		except Exception:
-			rate_by_template[tmpl] = 0.0
-	for parent, tmpl in first_template_by_parent.items():
-		out[parent] = flt(rate_by_template.get(tmpl, 0))
-	return out
+		)
+		for code in codes
+	}
 
 
 def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=None):
@@ -347,8 +357,11 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 
 	res["item_uoms"] = uoms
 
-	_tax_rates = _bulk_pos_item_tax_rate_percent([item_code])
-	res["pos_item_tax_rate"] = flt(_tax_rates.get(item_code, 0))
+	if company:
+		_tax_rates = _bulk_pos_item_tax_rate_percent([item_code], company)
+		res["pos_item_tax_rate"] = flt(_tax_rates.get(item_code, 0))
+	else:
+		res["pos_item_tax_rate"] = 0.0
 
 	return res
 
@@ -647,9 +660,13 @@ def get_item_variants(template_item, pos_profile):
 				if variant_code not in stock_map:
 					stock_map[variant_code] = 0.0
 
-		variant_tax_rate_map = _bulk_pos_item_tax_rate_percent(variant_codes)
+		variant_tax_rate_map = _bulk_pos_item_tax_rate_percent(
+			variant_codes, pos_profile_doc.company
+		)
 		template_tax_fallback = flt(
-			_bulk_pos_item_tax_rate_percent([template_item]).get(template_item, 0)
+			_bulk_pos_item_tax_rate_percent(
+				[template_item], pos_profile_doc.company
+			).get(template_item, 0)
 		)
 
 		# Enrich each variant with attributes, price, stock, and UOMs
@@ -1197,7 +1214,9 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 					"Bundle Availability Warning"
 				)
 
-		item_pos_tax_rate_map = _bulk_pos_item_tax_rate_percent(item_codes)
+		item_pos_tax_rate_map = _bulk_pos_item_tax_rate_percent(
+			item_codes, pos_profile_doc.company
+		)
 
 		# Enrich items with price, stock, barcode, and UOM data
 		for item in items:
