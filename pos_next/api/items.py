@@ -9,7 +9,6 @@ import frappe
 from erpnext.stock.doctype.batch.batch import get_batch_qty
 from erpnext.stock.get_item_details import (
 	get_item_details as erpnext_get_item_details,
-	get_item_tax_map,
 	get_item_tax_template,
 )
 from frappe import _, as_json
@@ -53,6 +52,27 @@ def get_stock_availability(item_code, warehouse):
 	return flt(rows[0].actual_qty) if rows else 0.0
 
 
+def _pos_sum_item_tax_template_rates(company, item_tax_template):
+	"""
+	Sum tax_rate rows on Item Tax Template for accounts in ``company``.
+
+	Same rules as ERPNext ``get_item_tax_map`` (as_json=False) but implemented
+	here so POS does not depend on that function's signature (newer ERPNext
+	uses keyword-only / context args and breaks positional calls).
+	"""
+	if not company or not item_tax_template:
+		return 0.0
+	total = 0.0
+	try:
+		tdoc = frappe.get_cached_doc("Item Tax Template", item_tax_template)
+		for d in tdoc.taxes or []:
+			if frappe.get_cached_value("Account", d.tax_type, "company") == company:
+				total += flt(d.tax_rate)
+	except Exception:
+		return 0.0
+	return total
+
+
 def _pos_item_tax_rate_percent_for_item(
 	item_code, company, tax_category=None, posting_date=None
 ):
@@ -76,8 +96,7 @@ def _pos_item_tax_rate_percent_for_item(
 	template = out.get("item_tax_template")
 	if not template:
 		return 0.0
-	tax_map = get_item_tax_map(company, template, as_json=False) or {}
-	return sum(flt(v) for v in tax_map.values())
+	return _pos_sum_item_tax_template_rates(company, template)
 
 
 def _bulk_pos_item_tax_rate_percent(item_codes, company, tax_category=None, posting_date=None):
