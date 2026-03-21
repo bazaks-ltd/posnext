@@ -64,7 +64,8 @@ def _pos_item_tax_rate_percent_for_item(
 		return 0.0
 	posting_date = posting_date or nowdate()
 	item = frappe.get_cached_doc("Item", item_code)
-	out = {}
+	# ERPNext _get_item_tax_template assigns out.item_tax_template (attribute API)
+	out = frappe._dict()
 	args = {
 		"company": company,
 		"tax_category": tax_category,
