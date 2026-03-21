@@ -19,7 +19,8 @@ export function useInvoice() {
 	// Tax mode is derived from the Taxes & Charges template (included_in_print_rate).
 	// We intentionally do not store a separate "tax inclusive" flag in POS Settings.
 	const taxInclusive = computed(() => {
-		return (taxRules.value || []).some((t) => (t?.included_in_print_rate || 0) === 1)
+		const rules = Array.isArray(taxRules.value) ? taxRules.value : []
+		return rules.some((t) => (t?.included_in_print_rate || 0) === 1)
 	})
 
 	// Performance: Incrementally maintained aggregates (updated on add/remove/change)
@@ -458,8 +459,9 @@ export function useInvoice() {
 	let taxRulesCacheKey = ""
 
 	function calculateTotalTaxRate() {
+		const rules = Array.isArray(taxRules.value) ? taxRules.value : []
 		// Create cache key from tax rules
-		const currentKey = JSON.stringify(taxRules.value)
+		const currentKey = JSON.stringify(rules)
 
 		// Return cached value if tax rules haven't changed
 		if (currentKey === taxRulesCacheKey && cachedTaxRate !== 0) {
@@ -468,8 +470,8 @@ export function useInvoice() {
 
 		// Calculate total tax rate
 		let totalRate = 0
-		if (taxRules.value && taxRules.value.length > 0) {
-			for (const taxRule of taxRules.value) {
+		if (rules.length > 0) {
+			for (const taxRule of rules) {
 				if (
 					taxRule.charge_type === "On Net Total" ||
 					taxRule.charge_type === "On Previous Row Total"
@@ -981,7 +983,15 @@ export function useInvoice() {
 		 */
 		try {
 			const result = await getTaxesResource.submit({ pos_profile: profileName })
-			taxRules.value = result?.data || result || []
+			// Frappe wraps whitelist return values as { message: ... }; other resources use .message too
+			const rules = Array.isArray(result)
+				? result
+				: Array.isArray(result?.message)
+					? result.message
+					: Array.isArray(result?.data)
+						? result.data
+						: []
+			taxRules.value = rules
 
 			// Recalculate all items with new tax rules
 			invoiceItems.value.forEach((item) => recalculateItem(item))
