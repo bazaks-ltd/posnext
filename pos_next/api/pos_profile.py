@@ -143,14 +143,28 @@ def get_payment_methods(pos_profile):
 
 @frappe.whitelist()
 def get_taxes(pos_profile):
-	"""Get tax configuration from POS Profile"""
+	"""Get tax configuration for POS cart totals (rates, inclusive flag).
+
+	Uses the POS Profile's **Sales Taxes and Charges** template when set.
+	If unset (common), falls back to the **company default** template — the same
+	rules as ERPNext ``AccountsController.set_taxes`` on Sales Invoice, so desk
+	invoices and POS preview stay aligned.
+	"""
 	try:
 		if not pos_profile:
 			return []
 
 		# Get the POS Profile
 		profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-		taxes_and_charges = getattr(profile_doc, 'taxes_and_charges', None)
+		taxes_and_charges = getattr(profile_doc, "taxes_and_charges", None)
+		company = profile_doc.company
+
+		if not taxes_and_charges and company:
+			taxes_and_charges = frappe.db.get_value(
+				"Sales Taxes and Charges Template",
+				{"is_default": 1, "company": company},
+				"name",
+			)
 
 		if not taxes_and_charges:
 			return []

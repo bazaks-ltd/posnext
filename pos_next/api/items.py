@@ -49,6 +49,46 @@ def get_stock_availability(item_code, warehouse):
 	return flt(rows[0].actual_qty) if rows else 0.0
 
 
+def _bulk_pos_item_tax_rate_percent(item_codes):
+	"""
+	Sum tax_rate from each item's first Item Tax row's Item Tax Template.
+
+	When the Sales Taxes and Charges Template has rate 0 (common with tax-inclusive
+	setups), ERPNext still applies VAT from Item Tax Template — POS must mirror
+	that for cart tax display.
+	"""
+	if not item_codes:
+		return {}
+	codes = list(dict.fromkeys(item_codes))
+	out = {code: 0.0 for code in codes}
+	rows = frappe.get_all(
+		"Item Tax",
+		filters={"parent": ["in", codes]},
+		fields=["parent", "item_tax_template", "idx"],
+	)
+	rows.sort(key=lambda r: (r.get("parent") or "", r.get("idx") or 0))
+	first_template_by_parent = {}
+	for row in rows:
+		tmpl = row.get("item_tax_template")
+		if not tmpl or row.parent in first_template_by_parent:
+			continue
+		first_template_by_parent[row.parent] = tmpl
+	if not first_template_by_parent:
+		return out
+	rate_by_template = {}
+	for tmpl in set(first_template_by_parent.values()):
+		try:
+			tt = frappe.get_cached_doc("Item Tax Template", tmpl)
+			rate_by_template[tmpl] = sum(
+				flt(tr.tax_rate) for tr in (tt.taxes or [])
+			)
+		except Exception:
+			rate_by_template[tmpl] = 0.0
+	for parent, tmpl in first_template_by_parent.items():
+		out[parent] = flt(rate_by_template.get(tmpl, 0))
+	return out
+
+
 def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=None):
 	"""
 	Get comprehensive item details including batch/serial data, pricing, and stock information.
@@ -306,6 +346,9 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 			uoms.append({"uom": stock_uom, "conversion_factor": 1.0})
 
 	res["item_uoms"] = uoms
+
+	_tax_rates = _bulk_pos_item_tax_rate_percent([item_code])
+	res["pos_item_tax_rate"] = flt(_tax_rates.get(item_code, 0))
 
 	return res
 
@@ -604,6 +647,11 @@ def get_item_variants(template_item, pos_profile):
 				if variant_code not in stock_map:
 					stock_map[variant_code] = 0.0
 
+		variant_tax_rate_map = _bulk_pos_item_tax_rate_percent(variant_codes)
+		template_tax_fallback = flt(
+			_bulk_pos_item_tax_rate_percent([template_item]).get(template_item, 0)
+		)
+
 		# Enrich each variant with attributes, price, stock, and UOMs
 		for variant in variants:
 			# Get variant attributes from preloaded map
@@ -631,6 +679,9 @@ def get_item_variants(template_item, pos_profile):
 
 			# Add UOM-specific prices
 			variant["uom_prices"] = uom_prices_map.get(variant["item_code"], {})
+
+			v_tax = flt(variant_tax_rate_map.get(variant["item_code"], 0))
+			variant["pos_item_tax_rate"] = v_tax if v_tax else template_tax_fallback
 
 		return variants
 	except Exception as e:
@@ -1146,6 +1197,8 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 					"Bundle Availability Warning"
 				)
 
+		item_pos_tax_rate_map = _bulk_pos_item_tax_rate_percent(item_codes)
+
 		# Enrich items with price, stock, barcode, and UOM data
 		for item in items:
 			stock_uom = item.get("stock_uom")
@@ -1280,6 +1333,9 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 
 			# UOM-specific prices map for frontend selector
 			item["uom_prices"] = uom_prices_map.get(item["item_code"], {})
+
+			# VAT from Item Tax Template (when master Sales template rate is 0)
+			item["pos_item_tax_rate"] = flt(item_pos_tax_rate_map.get(item["item_code"], 0))
 
 		return items
 	except Exception as e:

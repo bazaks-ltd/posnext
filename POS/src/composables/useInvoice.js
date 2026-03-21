@@ -238,6 +238,8 @@ export function useInvoice() {
 				// Add item_group and brand for offer eligibility checking
 				item_group: item.item_group,
 				brand: item.brand,
+				// Item Tax Template total % (when Sales template row rate is 0)
+				pos_item_tax_rate: item.pos_item_tax_rate,
 				// Preserve variant_of and template_item for variant tracking
 				variant_of: item.variant_of,
 				template_item: item.template_item,
@@ -472,11 +474,13 @@ export function useInvoice() {
 		let totalRate = 0
 		if (rules.length > 0) {
 			for (const taxRule of rules) {
+				const chargeType = String(taxRule.charge_type || "").trim()
 				if (
-					taxRule.charge_type === "On Net Total" ||
-					taxRule.charge_type === "On Previous Row Total"
+					chargeType === "On Net Total" ||
+					chargeType === "On Previous Row Total"
 				) {
-					totalRate += taxRule.rate || 0
+					const r = Number.parseFloat(taxRule.rate)
+					totalRate += Number.isFinite(r) ? r : 0
 				}
 			}
 		}
@@ -554,7 +558,12 @@ export function useInvoice() {
 		item.discount_amount = discountAmount
 
 		// Calculate tax based on inclusive/exclusive mode
-		const totalTaxRate = calculateTotalTaxRate()
+		const templateRate = calculateTotalTaxRate()
+		const itemRateRaw = Number.parseFloat(item.pos_item_tax_rate)
+		const totalTaxRate =
+			Number.isFinite(itemRateRaw) && itemRateRaw > 0
+				? itemRateRaw
+				: templateRate
 		let netAmount = 0
 		let taxAmount = 0
 
