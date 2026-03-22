@@ -215,6 +215,7 @@
 						:tax-amount="cartStore.totalTax"
 						:discount-amount="cartStore.totalDiscount"
 						:grand-total="cartStore.grandTotal"
+						:tax-inclusive="cartStore.taxInclusive"
 						:pos-profile="shiftStore.profileName"
 						:currency="shiftStore.profileCurrency"
 						:applied-offers="cartStore.appliedOffers"
@@ -795,7 +796,7 @@ import { offlineWorker } from "@/utils/offline/workerClient"
 import { printInvoice, printInvoiceByName } from "@/utils/printInvoice"
 import { Button, Dialog, createResource } from "frappe-ui"
 import { call } from "@/utils/apiWrapper"
-import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { computed, onMounted, onUnmounted, ref, toRaw, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 import { useInvoiceSharing } from "@/composables/useInvoiceSharing"
 
@@ -1619,8 +1620,11 @@ async function handlePaymentCompleted(paymentData) {
 
 			showSuccess(__("Invoice saved offline. Will sync when online"))
 		} else {
-			// Get item codes from cart before clearing (important for variants which have their own item_code)
-			const soldItemCodes = cartStore.invoiceItems.map(item => item.item_code)
+			// Capture before submit: submitInvoice resets line items; clearCart clears customer
+			const soldItemCodes = cartStore.invoiceItems.map((item) => item.item_code)
+			const customerForSharing = cartStore.customer
+				? { ...toRaw(cartStore.customer) }
+				: null
 
 			const result = await cartStore.submitInvoice()
 
@@ -1634,12 +1638,14 @@ async function handlePaymentCompleted(paymentData) {
 				// Reset cart hash after successful payment
 				previousCartHash = ""
 
-				// Refresh stock - Direct API (50-200ms), no Socket.IO lag!
-				// Pass empty array for cart items since cart is now cleared
-				// This ensures reservations are cleared for sold items (especially variants)
-				await stockStore.refresh(soldItemCodes, shiftStore.profileWarehouse, [])
+				// Stock refresh + IndexedDB can take noticeable time; do not block success UI
+				const refreshStockAfterSale = () =>
+					stockStore
+						.refresh(soldItemCodes, shiftStore.profileWarehouse, [])
+						.catch((err) => log.error("Stock refresh after sale failed", err))
 
 				if (shiftStore.autoPrintEnabled) {
+					refreshStockAfterSale()
 					try {
 						await handlePrintInvoice({ name: invoiceName })
 						showSuccess(__('Invoice {0} created and sent to printer', [invoiceName]))
@@ -1648,17 +1654,16 @@ async function handlePaymentCompleted(paymentData) {
 						showWarning(__('Invoice {0} created but print failed', [invoiceName]))
 					}
 				} else {
-					// Store customer info for sharing
-					lastInvoiceCustomer.value = cartStore.customer
-					
+					lastInvoiceCustomer.value = customerForSharing
+
 					uiStore.showSuccess(invoiceName, invoiceTotal, paidAmount)
 					showSuccess(__('Invoice {0} created successfully', [invoiceName]))
-					
-					// Load sharing options after showing success dialog
-					// This ensures the dialog is open and we can load options
-					setTimeout(async () => {
-						await loadSharingOptionsForInvoice(invoiceName)
+
+					setTimeout(() => {
+						loadSharingOptionsForInvoice(invoiceName)
 					}, 100)
+
+					refreshStockAfterSale()
 				}
 			}
 		}

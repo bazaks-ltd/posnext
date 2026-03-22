@@ -594,7 +594,7 @@
 								<!-- Item Total -->
 								<div class="text-end flex-shrink-0">
 									<div class="text-xs sm:text-sm font-bold text-blue-600 leading-none">
-										{{ formatCurrency(item.amount || item.rate * item.quantity) }}
+										{{ formatCurrency(cartLineDisplayTotal(item)) }}
 									</div>
 								</div>
 							</div>
@@ -736,6 +736,7 @@ const { formatQuantity } = useFormatters() // Quantity formatting utilities
  * @prop {Number} taxAmount - Total tax amount
  * @prop {Number} discountAmount - Total discount amount applied
  * @prop {Number} grandTotal - Final total (subtotal - discount + tax)
+ * @prop {Boolean} taxInclusive - When true, row total shows gross (net + line tax) like VAT-inclusive pricing
  * @prop {String} posProfile - Current POS Profile name
  * @prop {String} currency - Currency code for formatting (e.g., "USD", "EUR")
  * @prop {Array} appliedOffers - List of currently applied promotional offers
@@ -762,6 +763,10 @@ const props = defineProps({
 	grandTotal: {
 		type: Number,
 		default: 0,
+	},
+	taxInclusive: {
+		type: Boolean,
+		default: false,
 	},
 	posProfile: String,
 	currency: {
@@ -1129,6 +1134,25 @@ function getInitials(name) {
 		return (parts[0][0] + parts[1][0]).toUpperCase()
 	}
 	return name.substring(0, 2).toUpperCase()
+}
+
+/**
+ * Line total shown in the cart row.
+ * For VAT-inclusive templates, `item.amount` is net; add extracted `tax_amount` for gross.
+ */
+function cartLineDisplayTotal(item) {
+	if (props.taxInclusive) {
+		const net = Number.parseFloat(item.amount)
+		const tax = Number.parseFloat(item.tax_amount)
+		if (Number.isFinite(net)) {
+			return net + (Number.isFinite(tax) ? tax : 0)
+		}
+		const rate =
+			Number.parseFloat(item.price_list_rate ?? item.rate) || 0
+		const qty = Number.parseFloat(item.quantity) || 0
+		return rate * qty
+	}
+	return item.amount || item.rate * item.quantity
 }
 
 /**
