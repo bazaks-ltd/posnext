@@ -1433,6 +1433,16 @@ async function initialize() {
 		await initDB()
 		log.info("Database ready")
 
+		// Match main-thread manual offline (persisted by cache.setManualOffline)
+		try {
+			const row = await db.table("settings").get("manual_offline")
+			if (row?.value) {
+				manualOffline = true
+			}
+		} catch (e) {
+			log.debug("Could not read manual_offline from settings", e)
+		}
+
 		// Start periodic server ping (every 30 seconds)
 		setInterval(async () => {
 			const isOnline = await pingServer()

@@ -72,11 +72,11 @@ class OfflineWorkerClient {
 
 				if (type === "SERVER_STATUS_CHANGE") {
 					this.serverOnline = payload.serverOnline
-					// Update centralized offline state (handles window sync and events)
-					offlineState.updateState({
-						serverOnline: payload.serverOnline,
-						manualOffline: payload.manualOffline
-					})
+					// Only sync server reachability from the worker heartbeat.
+					// Do not apply payload.manualOffline: the worker flag can stay false when
+					// the user toggled manual offline only on the main thread, which would
+					// clear manual mode on every periodic ping (~30s).
+					offlineState.setServerOnline(payload.serverOnline)
 					// Also emit legacy event for backward compatibility
 					window.dispatchEvent(
 						new CustomEvent("offlineStatusChange", {

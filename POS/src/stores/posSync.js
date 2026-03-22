@@ -20,6 +20,7 @@ import {
 	cachePaymentMethodsFromServer,
 	syncOfflineInvoices,
 } from "@/utils/offline"
+import { setManualOffline as persistManualOfflineSetting } from "@/utils/offline/cache"
 import { logger } from "@/utils/logger"
 import { offlineState } from "@/utils/offline/offlineState"
 import { offlineWorker } from "@/utils/offline/workerClient"
@@ -318,11 +319,24 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	/**
 	 * Force offline mode (cached data / offline checkout) or turn it off.
 	 * Use when the network is connected but too slow for reliable API calls.
+	 *
+	 * Persists to IndexedDB and syncs the offline worker so periodic worker pings
+	 * do not broadcast stale manualOffline=false and clear this mode.
 	 */
-	function setManualOfflineMode(enabled) {
+	async function setManualOfflineMode(enabled) {
 		const on = !!enabled
-		offlineState.setManualOffline(on)
+		try {
+			await persistManualOfflineSetting(on)
+		} catch (error) {
+			log.error("Failed to persist manual offline preference", error)
+			offlineState.setManualOffline(on)
+		}
 		manualOffline.value = on
+		try {
+			await offlineWorker.setManualOffline(on)
+		} catch (error) {
+			log.error("Failed to sync manual offline to worker", error)
+		}
 		if (on) {
 			showSuccess(
 				__(
@@ -335,7 +349,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	function toggleManualOfflineMode() {
-		setManualOfflineMode(!offlineState.manualOffline)
+		void setManualOfflineMode(!offlineState.manualOffline)
 	}
 
 	// =========================================================================
