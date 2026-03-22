@@ -36,6 +36,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	/** Current offline status - synced with offlineState singleton */
 	const isOffline = ref(offlineState.isOffline)
 
+	/** User chose “work offline” while Wi‑Fi may still show as connected */
+	const manualOffline = ref(offlineState.manualOffline)
+
 	/** Number of invoices pending sync */
 	const pendingInvoicesCount = ref(0)
 
@@ -70,6 +73,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 		// Update reactive state
 		isOffline.value = nowOffline
+		manualOffline.value = state.manualOffline
 		connectionQuality.value = state.quality || offlineState.getConnectionQuality()
 
 		// Auto-sync when transitioning from offline to online
@@ -311,6 +315,29 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		return await offlineWorker.getCacheStats()
 	}
 
+	/**
+	 * Force offline mode (cached data / offline checkout) or turn it off.
+	 * Use when the network is connected but too slow for reliable API calls.
+	 */
+	function setManualOfflineMode(enabled) {
+		const on = !!enabled
+		offlineState.setManualOffline(on)
+		manualOffline.value = on
+		if (on) {
+			showSuccess(
+				__(
+					"Working offline — using cached items and customers. Invoices queue until you go online.",
+				),
+			)
+		} else {
+			showSuccess(__("Online mode — server connection will be used again."))
+		}
+	}
+
+	function toggleManualOfflineMode() {
+		setManualOfflineMode(!offlineState.manualOffline)
+	}
+
 	// =========================================================================
 	// INITIALIZATION
 	// =========================================================================
@@ -325,6 +352,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	return {
 		// State
 		isOffline,
+		manualOffline,
 		pendingInvoicesCount,
 		isSyncing,
 		pendingInvoicesList,
@@ -333,6 +361,8 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		hasPendingInvoices,
 
 		// Actions
+		setManualOfflineMode,
+		toggleManualOfflineMode,
 		saveInvoiceOffline,
 		loadPendingInvoices,
 		deleteOfflineInvoice,

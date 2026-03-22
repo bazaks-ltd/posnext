@@ -3,6 +3,16 @@ import { computed, ref, toRaw } from "vue"
 import { isOffline } from "@/utils/offline"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 
+/** Match ERPNext Sales Taxes row: prices include VAT when this is set on the template */
+function isIncludedInPrintRate(value) {
+	if (value === true || value === 1) return true
+	if (typeof value === "string") {
+		const s = value.trim().toLowerCase()
+		if (s === "1" || s === "true" || s === "yes") return true
+	}
+	return Number(value) === 1
+}
+
 export function useInvoice() {
 	// Serial Number Store for returning serials when items are removed
 	const serialStore = useSerialNumberStore()
@@ -20,7 +30,7 @@ export function useInvoice() {
 	// We intentionally do not store a separate "tax inclusive" flag in POS Settings.
 	const taxInclusive = computed(() => {
 		const rules = Array.isArray(taxRules.value) ? taxRules.value : []
-		return rules.some((t) => (t?.included_in_print_rate || 0) === 1)
+		return rules.some((t) => isIncludedInPrintRate(t?.included_in_print_rate))
 	})
 
 	// Performance: Incrementally maintained aggregates (updated on add/remove/change)

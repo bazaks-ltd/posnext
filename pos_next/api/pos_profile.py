@@ -5,6 +5,7 @@
 from __future__ import unicode_literals
 import frappe
 from frappe import _
+from frappe.utils import cint, flt
 
 
 @frappe.whitelist()
@@ -178,9 +179,10 @@ def get_taxes(pos_profile):
 			taxes.append({
 				"account_head": tax_row.account_head,
 				"charge_type": tax_row.charge_type,
-				"rate": tax_row.rate,
+				"rate": flt(tax_row.rate),
 				"description": tax_row.description,
-				"included_in_print_rate": getattr(tax_row, 'included_in_print_rate', 0),
+				# 0/1 int so the POS can treat prices as VAT-inclusive like Sales Invoice
+				"included_in_print_rate": cint(getattr(tax_row, "included_in_print_rate", 0)),
 				"idx": tax_row.idx
 			})
 

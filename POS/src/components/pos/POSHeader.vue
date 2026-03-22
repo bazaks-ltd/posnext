@@ -81,6 +81,56 @@
 
 				<!-- Right Side: Controls -->
 				<div class="flex items-center gap-0.5 sm:gap-1 md:gap-2 flex-shrink-0">
+					<!-- Manual offline (slow Wi‑Fi) -->
+					<button
+						type="button"
+						@click.stop="$emit('toggle-manual-offline')"
+						:class="[
+							'p-1.5 sm:p-2 rounded-lg transition-colors touch-manipulation',
+							manualOffline
+								? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+								: 'hover:bg-gray-100 active:bg-gray-200 text-gray-600',
+						]"
+						:title="
+							manualOffline
+								? __('Use server again (exit manual offline)')
+								: __('Work offline — use cache only if connection is slow')
+						"
+						:aria-label="
+							manualOffline
+								? __('Exit manual offline mode')
+								: __('Switch to manual offline mode')
+						"
+						:aria-pressed="manualOffline"
+					>
+						<!-- Slash Wi‑Fi: tap to work offline (slow link) -->
+						<svg
+							v-if="!manualOffline"
+							class="w-4 h-4 sm:w-5 sm:h-5"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414"
+							/>
+						</svg>
+						<!-- Normal Wi‑Fi: tap to use server again -->
+						<svg
+							v-else
+							class="w-4 h-4 sm:w-5 sm:h-5"
+							fill="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"
+							/>
+						</svg>
+					</button>
+
 					<!-- WiFi/Offline Status -->
 					<button @click="$emit('sync-click')" :class="[
 						'p-1.5 sm:p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative group touch-manipulation',
@@ -245,6 +295,7 @@ const appVersion = version
 
 const emit = defineEmits([
 	"sync-click",
+	"toggle-manual-offline",
 	"printer-click",
 	"refresh-click",
 	"menu-click",
@@ -308,6 +359,10 @@ const props = defineProps({
 		default: null,
 	},
 	isOffline: {
+		type: Boolean,
+		default: false,
+	},
+	manualOffline: {
 		type: Boolean,
 		default: false,
 	},
