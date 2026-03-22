@@ -61,11 +61,16 @@ class OfflineWorkerClient {
 					this.serverOnline = payload.serverOnline
 					this.initAttempts = 0 // Reset on successful init
 					this.startHealthCheck()
-					// Initialize centralized offline state
-					offlineState.initialize({
-						serverOnline: payload.serverOnline,
-						manualOffline: payload.manualOffline || false
-					})
+					// DOM may have called initialize() before the worker; then persisted
+					// manual_offline would be ignored. Re-apply "on" from worker/IndexedDB only.
+					if (!offlineState.initialized) {
+						offlineState.initialize({
+							serverOnline: payload.serverOnline,
+							manualOffline: Boolean(payload.manualOffline),
+						})
+					} else if (payload.manualOffline) {
+						offlineState.setManualOffline(true)
+					}
 					log.success("Offline worker ready", { serverOnline: payload.serverOnline })
 					return
 				}

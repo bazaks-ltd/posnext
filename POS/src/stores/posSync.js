@@ -90,6 +90,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		wasOffline = nowOffline
 	})
 
+	// Align Pinia with singleton after subscribe (initMemoryCache may set manual offline
+	// with { silent: true } before listeners exist, or worker may merge state after init).
+	isOffline.value = offlineState.isOffline
+	manualOffline.value = offlineState.manualOffline
+
 	// =========================================================================
 	// COMPUTED
 	// =========================================================================

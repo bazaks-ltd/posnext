@@ -517,6 +517,11 @@ class OfflineStateManager {
 		return this._manualOffline
 	}
 
+	/** Whether initialize() has run (offline monitor started). */
+	get initialized() {
+		return this._initialized
+	}
+
 	/**
 	 * Get server online state
 	 */
@@ -573,7 +578,9 @@ class OfflineStateManager {
 	}
 
 	/**
-	 * Batch update state (for worker sync)
+	 * Batch update state (for worker sync).
+	 * Manual offline is sticky: only `setManualOffline(false)` (user action) may clear it.
+	 * External callers may set it to true (e.g. worker) but must not force false.
 	 */
 	updateState({ serverOnline, manualOffline } = {}) {
 		let changed = false
@@ -583,8 +590,8 @@ class OfflineStateManager {
 			changed = true
 		}
 
-		if (manualOffline !== undefined && this._manualOffline !== manualOffline) {
-			this._manualOffline = manualOffline
+		if (manualOffline === true && !this._manualOffline) {
+			this._manualOffline = true
 			changed = true
 		}
 
