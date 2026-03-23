@@ -354,21 +354,6 @@
 									</svg>
 								</div>
 							</div>
-
-							<!-- Warehouse Availability Info Icon - Minimal centered overlay that appears on hover for out of stock items -->
-							<button
-								v-if="(item.is_stock_item || item.is_bundle) && getDisplayStock(item) <= 0"
-								@click.stop="showWarehouseAvailability(item)"
-								class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10"
-								:title="__('Check availability in other warehouses')"
-								:aria-label="__('Check warehouse availability')"
-							>
-								<div class="p-2.5 bg-white/80 backdrop-blur-sm rounded-full">
-									<svg class="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-										<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-									</svg>
-								</div>
-							</button>
 						</div>
 
 						<!-- Item Details -->
