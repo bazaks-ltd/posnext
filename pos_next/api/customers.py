@@ -109,3 +109,44 @@ def get_customer_details(customer):
         frappe.throw(_("Customer is required"))
 
     return frappe.get_cached_doc("Customer", customer).as_dict()
+
+
+@frappe.whitelist()
+def get_customer_annual_billing(customer: str, company: str | None = None):
+    """
+    Return the same "Annual Billing" value shown on the Customer dashboard.
+
+    Uses ERPNext's party dashboard computation for the current fiscal year.
+
+    Args:
+        customer: Customer name (ID)
+        company: Optional company to pick the matching row (POS company)
+
+    Returns:
+        dict: { billing_this_year, currency, company }
+    """
+    if not customer:
+        frappe.throw(_("Customer is required"))
+
+    # Permission gate (POS users should have at least read/select on Customer)
+    ptype = "select" if frappe.only_has_select_perm("Customer") else "read"
+    frappe.has_permission("Customer", ptype, customer, throw=True)
+
+    # Compute using ERPNext's canonical dashboard logic
+    from erpnext.accounts.party import get_dashboard_info
+
+    rows = get_dashboard_info("Customer", customer) or []
+    if not rows:
+        return {"billing_this_year": 0, "currency": None, "company": company}
+
+    selected = None
+    if company:
+        selected = next((r for r in rows if r.get("company") == company), None)
+    if not selected:
+        selected = rows[0]
+
+    return {
+        "billing_this_year": selected.get("billing_this_year") or 0,
+        "currency": selected.get("currency"),
+        "company": selected.get("company"),
+    }

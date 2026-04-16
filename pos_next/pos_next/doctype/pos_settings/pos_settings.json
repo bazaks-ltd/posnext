@@ -22,6 +22,7 @@
   "default_card_view",
   "display_item_code",
   "show_customer_balance",
+  "show_customer_annual_billing",
   "column_break_display",
   "hide_expected_amount",
   "display_discount_percentage",
@@ -182,6 +183,13 @@
    "fieldtype": "Check",
    "label": "Show Customer Balance",
    "description": "Display customer balance on screen"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_customer_annual_billing",
+   "fieldtype": "Check",
+   "label": "Show Customer Annual Billing",
+   "description": "Display the annual billing indicator next to the selected customer"
   },
   {
    "fieldname": "column_break_display",

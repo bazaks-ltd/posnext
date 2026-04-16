@@ -217,6 +217,7 @@
 						:grand-total="cartStore.grandTotal"
 						:tax-inclusive="cartStore.taxInclusive"
 						:pos-profile="shiftStore.profileName"
+						:company="shiftStore.profileCompany"
 						:currency="shiftStore.profileCurrency"
 						:applied-offers="cartStore.appliedOffers"
 						:warehouses="profileWarehouses"

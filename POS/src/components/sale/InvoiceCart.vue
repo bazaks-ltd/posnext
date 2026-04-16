@@ -83,7 +83,23 @@
 							</p>
 						</div>
 					</div>
-					<div class="flex items-center gap-1">
+					<div class="flex items-center gap-2">
+						<!-- Annual Billing (Customer Dashboard) -->
+						<div v-if="showCustomerAnnualBilling" class="flex flex-col items-end min-w-[84px]">
+							<p class="text-[9px] font-medium text-gray-500 leading-none">
+								{{ __('Annual Billing') }}
+							</p>
+							<div class="flex items-center gap-1">
+								<div
+									v-if="annualBillingLoading"
+									class="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"
+									aria-hidden="true"
+								></div>
+								<p v-else class="text-[11px] font-bold text-blue-600 leading-none tabular-nums">
+									{{ annualBillingDisplay }}
+								</p>
+							</div>
+						</div>
 						<!-- Create New Customer Button -->
 						<button
 							type="button"
@@ -708,8 +724,10 @@
  */
 import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSOffersStore } from "@/stores/posOffers"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { useFormatters } from "@/composables/useFormatters"
+import { call } from "@/utils/apiWrapper"
 import { isOffline } from "@/utils/offline"
 import { FeatherIcon } from "frappe-ui"
 import { offlineWorker } from "@/utils/offline/workerClient"
@@ -724,6 +742,7 @@ import EditItemDialog from "./EditItemDialog.vue"
  */
 const cartStore = usePOSCartStore()      // Pinia store for cart state management
 const offersStore = usePOSOffersStore()  // Pinia store for offers/promotions
+const settingsStore = usePOSSettingsStore() // Pinia store for POS Settings
 const { formatQuantity } = useFormatters() // Quantity formatting utilities
 
 /**
@@ -738,6 +757,7 @@ const { formatQuantity } = useFormatters() // Quantity formatting utilities
  * @prop {Number} grandTotal - Final total (subtotal - discount + tax)
  * @prop {Boolean} taxInclusive - When true, row total shows gross (net + line tax) like VAT-inclusive pricing
  * @prop {String} posProfile - Current POS Profile name
+ * @prop {String} company - POS company (used for customer annual billing indicator)
  * @prop {String} currency - Currency code for formatting (e.g., "USD", "EUR")
  * @prop {Array} appliedOffers - List of currently applied promotional offers
  * @prop {Array} warehouses - Available warehouses for item selection
@@ -769,6 +789,7 @@ const props = defineProps({
 		default: false,
 	},
 	posProfile: String,
+	company: String,
 	currency: {
 		type: String,
 		default: "USD",
@@ -822,6 +843,8 @@ const allCustomers = ref([])                // All customers loaded in memory fo
 const customersLoaded = ref(false)          // Flag indicating customers are ready
 const selectedIndex = ref(-1)               // Keyboard navigation index for search results
 const availableGiftCards = ref([])          // Available gift cards for current customer
+const annualBillingInfo = ref(null)         // Annual billing indicator for selected customer
+const annualBillingLoading = ref(false)     // Loading state for annual billing
 
 // Edit item dialog state
 const showEditDialog = ref(false)           // Controls edit dialog visibility
@@ -1017,6 +1040,47 @@ const customerResults = computed(() => {
 watch(customerResults, () => {
 	selectedIndex.value = -1
 })
+
+/**
+ * Annual billing display (formatted).
+ * Uses the currency returned by ERPNext's dashboard info when available.
+ */
+const annualBillingDisplay = computed(() => {
+	const amount = Number.parseFloat(annualBillingInfo.value?.billing_this_year || 0) || 0
+	const currency = annualBillingInfo.value?.currency || props.currency
+	return formatCurrencyUtil(amount, currency)
+})
+
+const showCustomerAnnualBilling = computed(() =>
+	Boolean(settingsStore.settings?.show_customer_annual_billing),
+)
+
+// Keep annual billing in sync with selected customer (online only)
+watch(
+	() => [props.customer?.name || props.customer, props.company, showCustomerAnnualBilling.value],
+	async ([customerName, company]) => {
+		annualBillingInfo.value = null
+
+		if (!customerName) return
+		if (!showCustomerAnnualBilling.value) return
+		if (isOffline()) return
+
+		annualBillingLoading.value = true
+		try {
+			const res = await call("pos_next.api.customers.get_customer_annual_billing", {
+				customer: customerName,
+				company,
+			})
+			annualBillingInfo.value = res?.message || res || null
+		} catch (e) {
+			console.error("Failed to load customer annual billing:", e)
+			annualBillingInfo.value = null
+		} finally {
+			annualBillingLoading.value = false
+		}
+	},
+	{ immediate: true },
+)
 
 /**
  * Total quantity of all items in cart (including free items).

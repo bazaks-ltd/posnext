@@ -81,6 +81,7 @@ def get_pos_settings(pos_profile):
 				"allow_return",
 				"allow_write_off_change",
 				"allow_partial_payment",
+				"show_customer_annual_billing",
 				"decimal_precision",
 				"allow_negative_stock",
 				"enable_sales_persons"
@@ -100,6 +101,7 @@ def get_pos_settings(pos_profile):
 				"allow_return": 0,
 				"allow_write_off_change": 0,
 				"allow_partial_payment": 0,
+				"show_customer_annual_billing": 0,
 				"decimal_precision": "2",
 				"allow_negative_stock": 0,
 				"enable_sales_persons": "Disabled"
