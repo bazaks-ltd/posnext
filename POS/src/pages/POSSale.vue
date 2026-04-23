@@ -794,7 +794,12 @@ import { session } from "@/data/session"
 import { useUserData } from "@/data/user"
 import { parseError } from "@/utils/errorHandler"
 import { offlineWorker } from "@/utils/offline/workerClient"
-import { printInvoice, printInvoiceByName } from "@/utils/printInvoice"
+import {
+	buildOfflineThermalInvoice,
+	printInvoice,
+	printInvoiceByName,
+	printThermalReceipt,
+} from "@/utils/printInvoice"
 import { Button, Dialog, createResource } from "frappe-ui"
 import { call } from "@/utils/apiWrapper"
 import { computed, onMounted, onUnmounted, ref, toRaw, watch } from "vue"
@@ -1496,7 +1501,10 @@ function handleItemSelected(item, autoAdd = false) {
 }
 
 async function handleEditItem(updatedItem) {
-	await cartStore.updateItemDetails(updatedItem.item_code, updatedItem)
+	await cartStore.updateItemDetails(
+		updatedItem.lineId || updatedItem.item_code,
+		updatedItem,
+	)
 }
 
 function handleAdditionalDiscountUpdate(discountAmount) {
@@ -1612,14 +1620,34 @@ async function handlePaymentCompleted(paymentData) {
 				total_discount: cartStore.totalDiscount,
 			}
 
-			await offlineStore.saveInvoiceOffline(invoiceData)
-			uiStore.showSuccess(`OFFLINE-${Date.now()}`, cartStore.grandTotal, paymentData.paid_amount)
+			const saveResult = await offlineStore.saveInvoiceOffline(invoiceData)
+			const queueId =
+				saveResult && typeof saveResult === "object" && saveResult.id != null
+					? saveResult.id
+					: null
+			const displayName =
+				queueId != null ? `OFFLINE-${queueId}` : `OFFLINE-${Date.now()}`
+
+			uiStore.showSuccess(displayName, cartStore.grandTotal, paymentData.paid_amount)
 			uiStore.showPaymentDialog = false
 			cartStore.clearCart()
 			// Reset cart hash after successful payment
 			previousCartHash = ""
 
 			showSuccess(__("Invoice saved offline. Will sync when online"))
+
+			if (shiftStore.autoPrintEnabled && queueId != null) {
+				try {
+					await printThermalReceipt(
+						buildOfflineThermalInvoice(invoiceData, queueId),
+					)
+				} catch (printErr) {
+					log.error("Offline auto-print error:", printErr)
+					showWarning(
+						__("Invoice saved offline but receipt could not be printed"),
+					)
+				}
+			}
 		} else {
 			// Capture before submit: submitInvoice resets line items; clearCart clears customer
 			const soldItemCodes = cartStore.invoiceItems.map((item) => item.item_code)
@@ -2392,6 +2420,11 @@ function handleViewInvoice(invoice) {
 // Centralized print handler - uses printInvoice.js utilities
 async function handlePrintInvoice(invoiceData) {
 	try {
+		const name = invoiceData?.name
+		if (name && /^OFFLINE-\d+$/i.test(String(name))) {
+			await printInvoiceByName(name)
+			return
+		}
 		// If invoiceData is a full document with items, use printInvoice directly
 		if (invoiceData.items && Array.isArray(invoiceData.items)) {
 			await printInvoice(invoiceData)
@@ -2403,8 +2436,8 @@ async function handlePrintInvoice(invoiceData) {
 	} catch (error) {
 		log.error("Error printing invoice:", error)
 		window.frappe?.msgprint({
-			title: "Error",
-			message: "Failed to print invoice",
+			title: __("Error"),
+			message: error.message || __("Failed to print invoice"),
 			indicator: "red",
 		})
 	}

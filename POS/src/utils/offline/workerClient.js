@@ -354,6 +354,8 @@ class OfflineWorkerClient {
 			case "SEARCH_CUSTOMERS":
 			case "GET_PAYMENT_METHODS":
 				return []
+			case "GET_OFFLINE_INVOICE_BY_ID":
+				return null
 			case "IS_CACHE_READY":
 				return false
 			case "GET_CACHE_STATS":
@@ -398,6 +400,10 @@ class OfflineWorkerClient {
 
 	async getOfflineInvoices() {
 		return this.sendMessage("GET_INVOICES")
+	}
+
+	async getOfflineInvoiceById(id) {
+		return this.sendMessage("GET_OFFLINE_INVOICE_BY_ID", { id })
 	}
 
 	async saveOfflineInvoice(invoiceData) {

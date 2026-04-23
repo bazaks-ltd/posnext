@@ -275,8 +275,11 @@
 <script setup>
 import { Button, Dialog, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
+import { useToast } from "@/composables/useToast"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { call } from "@/utils/apiWrapper"
+
+const { showError: showToastError } = useToast()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -631,43 +634,43 @@ async function handleConfirm() {
 			}
 		}
 
-		console.log("Batch selections:", batchSelections)
-
 		if (batchSelections.length > 0) {
 			result.batches = batchSelections
 			result.quantity = totalSelectedQty.value
-			
-			// Create bundle for the batches
+
+			let bundleOk = false
 			try {
-				// Let frappe-ui handle the serialization
-				console.log("Calling create_batch_bundle with:", {
-					item_code: props.item.item_code,
-					warehouse: props.warehouse,
-					batches: batchSelections,
-					type_of_transaction: "Outward"
-				})
-				
-				const bundleResponse = await call("pos_next.api.serial_batch_bundle.create_batch_bundle", {
-					item_code: props.item.item_code,
-					warehouse: props.warehouse,
-					batches: batchSelections,
-					type_of_transaction: "Outward"
-				})
-				
-				console.log("Bundle response:", bundleResponse)
-				
+				const bundleResponse = await call(
+					"pos_next.api.serial_batch_bundle.create_batch_bundle",
+					{
+						item_code: props.item.item_code,
+						warehouse: props.warehouse,
+						batches: batchSelections,
+						type_of_transaction: "Outward",
+					},
+				)
+
 				if (bundleResponse && bundleResponse.success) {
 					result.serial_and_batch_bundle = bundleResponse.bundle_name
 					result._bundle_data = bundleResponse.bundle_data
-					console.log("Bundle created:", result.serial_and_batch_bundle, result._bundle_data)
+					bundleOk = true
 				} else {
-					console.error("Bundle creation failed:", bundleResponse)
+					const msg =
+						(bundleResponse && bundleResponse.error) ||
+						__("Could not create batch bundle. Try again or contact support.")
+					showToastError(__("Batch bundle failed: {0}", [String(msg)]))
 				}
 			} catch (error) {
 				console.error("Error creating batch bundle:", error)
+				showToastError(
+					__("Batch bundle failed: {0}", [error?.message || String(error)]),
+				)
 			}
-			
-			// Also set the first batch for display
+
+			if (!bundleOk) {
+				return
+			}
+
 			result.batch_no = batchSelections[0].batch_no
 		}
 	}
@@ -681,7 +684,6 @@ async function handleConfirm() {
 		serialStore.consumeSerials(props.item.item_code, selectedList)
 	}
 
-	console.log("Emitting batch-serial-selected with result:", result)
 	emit("batch-serial-selected", result)
 	show.value = false
 }

@@ -95,6 +95,15 @@
 									</svg>
 								</button>
 								<button
+									@click="printOfflineInvoice(invoice)"
+									class="p-1.5 sm:p-2 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
+									:title="__('Print receipt')"
+								>
+									<svg class="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+									</svg>
+								</button>
+								<button
 									@click="viewDetails(invoice)"
 									class="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors touch-manipulation"
 									:title="__('View Details')"
@@ -179,6 +188,15 @@
 			</div>
 		</template>
 		<template #actions>
+			<Button
+				v-if="selectedInvoice"
+				variant="solid"
+				theme="blue"
+				class="w-full sm:w-auto"
+				@click="printOfflineInvoice(selectedInvoice)"
+			>
+				{{ __('Print receipt') }}
+			</Button>
 			<Button variant="subtle" @click="showDetails = false" class="w-full sm:w-auto">{{ __('Close') }}</Button>
 		</template>
 	</Dialog>
@@ -220,9 +238,13 @@
 </template>
 
 <script setup>
+import { useToast } from "@/composables/useToast"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import { printInvoiceByName } from "@/utils/printInvoice"
 import { Button, Dialog } from "frappe-ui"
 import { computed, ref, watch } from "vue"
+
+const { showError, showSuccess } = useToast()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -309,6 +331,18 @@ function formatDate(timestamp) {
 function viewDetails(invoice) {
 	selectedInvoice.value = invoice
 	showDetails.value = true
+}
+
+async function printOfflineInvoice(invoice) {
+	if (!invoice?.id) {
+		return
+	}
+	try {
+		await printInvoiceByName(`OFFLINE-${invoice.id}`)
+		showSuccess(__("Receipt ready — use your system print dialog if needed"))
+	} catch (error) {
+		showError(error?.message || __("Failed to print receipt"))
+	}
 }
 
 function editInvoice(invoice) {

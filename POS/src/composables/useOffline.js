@@ -32,9 +32,9 @@ export function useOffline() {
 	// Save invoice offline using worker
 	const saveInvoiceOffline = async (invoiceData) => {
 		try {
-			await offlineWorker.saveOfflineInvoice(invoiceData)
+			const result = await offlineWorker.saveOfflineInvoice(invoiceData)
 			await updatePendingCount()
-			return true
+			return result
 		} catch (error) {
 			console.error("[useOffline] Error saving invoice offline:", error)
 			throw error

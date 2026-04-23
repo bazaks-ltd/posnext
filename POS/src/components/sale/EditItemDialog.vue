@@ -845,29 +845,16 @@ async function updateItem() {
 		}
 	}
 
-	// Update bundle if we have a bundle and batches have changed
+	// Update bundle if we have a bundle and batch rows
+	// bundleBatches store qty in stock UOM; sync first so totals match line qty * conversion
 	if (localItem.value.has_batch_no && localItem.value.serial_and_batch_bundle && bundleBatches.value.length > 0) {
-		const oldTotalQty = bundleBatches.value.reduce((sum, b) => sum + b.qty, 0)
-		const newTotalQty = localQuantity.value
-		
-		// Always update bundle to ensure it matches current batch distribution
-		// If quantity changed, update bundle batches proportionally
-		let batchesToUpdate = bundleBatches.value
-		if (oldTotalQty !== newTotalQty && oldTotalQty > 0) {
-			const ratio = newTotalQty / oldTotalQty
-			batchesToUpdate = bundleBatches.value.map(b => ({
-				batch_no: b.batch_no,
-				qty: Math.round(b.qty * ratio * 100) / 100 // Round to 2 decimals
-			}))
-			
-			// Ensure total matches (adjust last batch if needed)
-			const calculatedTotal = batchesToUpdate.reduce((sum, b) => sum + b.qty, 0)
-			if (calculatedTotal !== newTotalQty && batchesToUpdate.length > 0) {
-				const diff = newTotalQty - calculatedTotal
-				batchesToUpdate[batchesToUpdate.length - 1].qty += diff
-			}
-		}
-		
+		syncBundleBatchesToQuantity()
+		// Use synced stock-qty distribution only (no UOM/stock mix-up; sync already scaled by conversionFactorToStock)
+		const batchesToUpdate = bundleBatches.value.map((b) => ({
+			batch_no: b.batch_no,
+			qty: Math.round(b.qty * 100) / 100,
+		}))
+
 		// Update bundle in backend
 		try {
 			await call("pos_next.api.serial_batch_bundle.update_batch_bundle", {
@@ -1157,14 +1144,17 @@ async function confirmBatchManagement() {
 			
 			// Immediately update the cart item with the new bundle data
 			// This ensures the changes persist even if user closes dialog without clicking "Update Item"
-			await cartStore.updateItemDetails(localItem.value.item_code, {
-				quantity: totalQtyInUom,
-				serial_and_batch_bundle: localItem.value.serial_and_batch_bundle,
-				_bundle_data: {
-					entries: selectedBatches
+			await cartStore.updateItemDetails(
+				localItem.value.lineId || localItem.value.item_code,
+				{
+					quantity: totalQtyInUom,
+					serial_and_batch_bundle: localItem.value.serial_and_batch_bundle,
+					_bundle_data: {
+						entries: selectedBatches,
+					},
+					batch_no: selectedBatches[0].batch_no,
 				},
-				batch_no: selectedBatches[0].batch_no
-			})
+			)
 		} catch (error) {
 			console.error("Error updating batch bundle:", error)
 			showError(__("Failed to update batch bundle: {0}", [error.message || error]))

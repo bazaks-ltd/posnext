@@ -13,6 +13,13 @@ function isIncludedInPrintRate(value) {
 	return Number(value) === 1
 }
 
+function createLineId() {
+	if (typeof crypto !== "undefined" && crypto.randomUUID) {
+		return crypto.randomUUID()
+	}
+	return `line-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+}
+
 export function useInvoice() {
 	// Serial Number Store for returning serials when items are removed
 	const serialStore = useSerialNumberStore()
@@ -164,6 +171,17 @@ export function useInvoice() {
 		)
 	})
 
+	function findLineItem(lineRef) {
+		if (lineRef === undefined || lineRef === null) {
+			return undefined
+		}
+		const byLineId = invoiceItems.value.find((i) => i.lineId === lineRef)
+		if (byLineId) {
+			return byLineId
+		}
+		return invoiceItems.value.find((i) => i.item_code === lineRef)
+	}
+
 	// Actions
 	function addItem(item, quantity = 1) {
 		// For items with bundles, don't merge - each bundle should be a separate line
@@ -253,6 +271,7 @@ export function useInvoice() {
 				// Preserve variant_of and template_item for variant tracking
 				variant_of: item.variant_of,
 				template_item: item.template_item,
+				lineId: item.lineId || createLineId(),
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes
@@ -267,32 +286,33 @@ export function useInvoice() {
 		}
 	}
 
-	function removeItem(itemCode) {
-		const itemToRemove = invoiceItems.value.find(
-			(i) => i.item_code === itemCode,
-		)
+	function removeItem(lineRef) {
+		const itemToRemove = findLineItem(lineRef)
+		if (!itemToRemove) {
+			return
+		}
+		// Update cache incrementally (subtract removed item values)
+		// Use price_list_rate for subtotal (before discount)
+		const priceListRate = itemToRemove.price_list_rate || itemToRemove.rate
+		_cachedSubtotal.value -= itemToRemove.quantity * priceListRate
+		_cachedTotalTax.value -= itemToRemove.tax_amount || 0
+		_cachedTotalDiscount.value -= itemToRemove.discount_amount || 0
 
-		if (itemToRemove) {
-			// Update cache incrementally (subtract removed item values)
-			// Use price_list_rate for subtotal (before discount)
-			const priceListRate = itemToRemove.price_list_rate || itemToRemove.rate
-			_cachedSubtotal.value -= itemToRemove.quantity * priceListRate
-			_cachedTotalTax.value -= itemToRemove.tax_amount || 0
-			_cachedTotalDiscount.value -= itemToRemove.discount_amount || 0
-
-			// Return serial numbers back to cache if item has serials
-			if (itemToRemove.serial_no && itemToRemove.has_serial_no) {
-				serialStore.returnSerials(itemCode, itemToRemove.serial_no)
-			}
+		// Return serial numbers back to cache if item has serials
+		if (itemToRemove.serial_no && itemToRemove.has_serial_no) {
+			serialStore.returnSerials(itemToRemove.item_code, itemToRemove.serial_no)
 		}
 
-		invoiceItems.value = invoiceItems.value.filter(
-			(i) => i.item_code !== itemCode,
-		)
+		invoiceItems.value = invoiceItems.value.filter((i) => {
+			if (itemToRemove.lineId && i.lineId) {
+				return i.lineId !== itemToRemove.lineId
+			}
+			return i !== itemToRemove
+		})
 	}
 
-	function updateItemQuantity(itemCode, quantity) {
-		const item = invoiceItems.value.find((i) => i.item_code === itemCode)
+	function updateItemQuantity(lineRef, quantity) {
+		const item = findLineItem(lineRef)
 		if (item) {
 			// Store old values before update for incremental cache adjustment
 			// Use price_list_rate for subtotal calculations (before discount)
@@ -314,7 +334,7 @@ export function useInvoice() {
 					const serialsToKeep = serialList.slice(0, newQuantity)
 
 					if (serialsToReturn.length > 0) {
-						serialStore.returnSerials(itemCode, serialsToReturn)
+						serialStore.returnSerials(item.item_code, serialsToReturn)
 						item.serial_no = serialsToKeep.join('\n')
 					}
 				}
@@ -334,8 +354,8 @@ export function useInvoice() {
 		}
 	}
 
-	function updateItemRate(itemCode, rate) {
-		const item = invoiceItems.value.find((i) => i.item_code === itemCode)
+	function updateItemRate(lineRef, rate) {
+		const item = findLineItem(lineRef)
 		if (item) {
 			// Store old values before update for incremental cache adjustment
 			// Use price_list_rate for subtotal calculations (before discount)
@@ -356,8 +376,8 @@ export function useInvoice() {
 		}
 	}
 
-	function updateItemDiscount(itemCode, discountPercentage) {
-		const item = invoiceItems.value.find((i) => i.item_code === itemCode)
+	function updateItemDiscount(lineRef, discountPercentage) {
+		const item = findLineItem(lineRef)
 		if (item) {
 			// Validate discount percentage (0-100)
 			let validDiscount = Number.parseFloat(discountPercentage) || 0

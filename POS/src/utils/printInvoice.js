@@ -1,7 +1,81 @@
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
+import { __ } from "@/utils/translation"
+import { offlineWorker } from "@/utils/offline/workerClient"
 
-const log = logger.create('PrintInvoice')
+const log = logger.create("PrintInvoice")
+
+function hasThermalLineItems(invoiceData) {
+	return (
+		invoiceData &&
+		Array.isArray(invoiceData.items) &&
+		invoiceData.items.filter(Boolean).length > 0
+	)
+}
+
+/**
+ * Normalize queued offline payload for the thermal receipt HTML fallback.
+ */
+export function buildOfflineThermalInvoice(invoiceData, queueId) {
+	const d = invoiceData || {}
+	const name =
+		queueId != null ? `OFFLINE-${queueId}` : `OFFLINE-${Date.now()}`
+	return normalizeInvoiceForThermalPrint({
+		name,
+		doctype: "Sales Invoice",
+		company: d.company || "POS Next",
+		posting_date: new Date().toISOString().slice(0, 10),
+		customer_name: d.customer_name || d.customer,
+		items: d.items,
+		payments: d.payments,
+		grand_total: d.grand_total,
+		total_taxes_and_charges: d.total_tax ?? d.total_taxes_and_charges,
+		discount_amount: d.discount_amount,
+		additional_discount_percentage: d.additional_discount_percentage,
+		paid_amount: d.paid_amount,
+		outstanding_amount: d.outstanding_amount,
+		change_amount: d.change_amount,
+		status: __("Pending sync"),
+	})
+}
+
+export function offlineQueueRowToInvoice(row, displayName) {
+	const d = row?.data || {}
+	const invoiceName =
+		displayName ||
+		(row?.id != null ? `OFFLINE-${row.id}` : `OFFLINE-${row.timestamp}`)
+	return normalizeInvoiceForThermalPrint({
+		name: invoiceName,
+		doctype: "Sales Invoice",
+		company: d.company || "POS Next",
+		posting_date: new Date(row.timestamp).toISOString().slice(0, 10),
+		customer_name: d.customer_name || d.customer,
+		items: d.items,
+		payments: d.payments,
+		grand_total: d.grand_total,
+		total_taxes_and_charges: d.total_tax ?? d.total_taxes_and_charges,
+		discount_amount: d.discount_amount,
+		additional_discount_percentage: d.additional_discount_percentage,
+		paid_amount: d.paid_amount,
+		outstanding_amount: d.outstanding_amount,
+		change_amount: d.change_amount,
+		status: __("Pending sync"),
+	})
+}
+
+export function normalizeInvoiceForThermalPrint(raw) {
+	const items = Array.isArray(raw?.items)
+		? raw.items.filter(Boolean)
+		: []
+	const payments = Array.isArray(raw?.payments)
+		? raw.payments.filter(Boolean)
+		: []
+	return {
+		...raw,
+		items,
+		payments,
+	}
+}
 
 /**
  * Print invoice using Frappe's print format system
@@ -15,79 +89,65 @@ export async function printInvoice(
 	printFormat = null,
 	letterhead = null,
 ) {
-	try {
-		if (!invoiceData || !invoiceData.name) {
-			throw new Error("Invalid invoice data")
-		}
-
-		const doctype = invoiceData.doctype || "Sales Invoice"
-		const format = printFormat || "POS Next Receipt"
-
-		// Build PDF print URL
-		const params = new URLSearchParams({
-			doctype: doctype,
-			name: invoiceData.name,
-			format: format,
-			no_letterhead: letterhead ? 0 : 1,
-			_lang: "en",
-			trigger_print: 1,
-			_t: Date.now(), // Cache buster to force fresh print format
-		})
-
-		if (letterhead) {
-			params.append("letterhead", letterhead)
-		}
-
-		// Open PDF in new window - browser will handle print dialog
-		const printUrl = `/printview?${params.toString()}`
-		const printWindow = window.open(printUrl, "_blank", "width=800,height=600")
-
-		if (!printWindow) {
-			throw new Error(
-				"Failed to open print window. Please check your popup blocker settings.",
-			)
-		}
-
-		return true
-	} catch (error) {
-		log.error("Error printing with Frappe print format:", error)
-		// Fallback to custom print format
-		return printInvoiceCustom(invoiceData)
+	if (!invoiceData?.name) {
+		throw new Error(__("Invalid invoice data"))
 	}
+
+	const doctype = invoiceData.doctype || "Sales Invoice"
+	const format = printFormat || "POS Next Receipt"
+
+	const params = new URLSearchParams({
+		doctype: doctype,
+		name: invoiceData.name,
+		format: format,
+		no_letterhead: letterhead ? 0 : 1,
+		_lang: "en",
+		trigger_print: 1,
+		_t: Date.now(),
+	})
+
+	if (letterhead) {
+		params.append("letterhead", letterhead)
+	}
+
+	const printUrl = `/printview?${params.toString()}`
+	const printWindow = window.open(printUrl, "_blank", "width=800,height=600")
+
+	if (!printWindow) {
+		if (hasThermalLineItems(invoiceData)) {
+			return printInvoiceCustom(invoiceData)
+		}
+		throw new Error(
+			__(
+				"Could not open print window. Allow popups or use thermal receipt fallback with line items.",
+			),
+		)
+	}
+
+	return true
 }
 
 /**
  * Generates and prints a custom POS receipt using a thermal printer layout.
- *
- * This fallback printer is used when Frappe's standard print format is unavailable.
- * The receipt is optimized for 80mm thermal printers with clean, readable formatting.
- *
- * Receipt Structure:
- * - Header: Company name and invoice type
- * - Info: Invoice number, date, customer, payment status
- * - Items: Each item shows quantity × original price = subtotal
- * - Discounts: Displayed as separate line items with negative amounts
- * - Totals: Subtotal, tax, and grand total
- * - Payments: Payment methods and amounts, change, outstanding balance
- * - Footer: Thank you message
- *
- * @param {Object} invoiceData - The invoice document data from ERPNext
- * @param {string} invoiceData.name - Invoice number
- * @param {string} invoiceData.company - Company name
- * @param {Array} invoiceData.items - Invoice line items
- * @param {Array} invoiceData.payments - Payment records
- * @param {number} invoiceData.grand_total - Invoice total amount
  */
 function printInvoiceCustom(invoiceData) {
-	// Open print window with receipt size dimensions (80mm ≈ 302px at 96 DPI)
+	const safe = normalizeInvoiceForThermalPrint(invoiceData)
 	const printWindow = window.open("", "_blank", "width=350,height=600")
+
+	if (!printWindow?.document) {
+		throw new Error(
+			__(
+				"Could not open print window. Check popup blocker settings.",
+			),
+		)
+	}
 
 	const printContent = `
 		<!DOCTYPE html>
 		<html>
 		<head>
 			<meta charset="UTF-8">
-			<title>${__('Invoice - {0}', [invoiceData.name])}</title>
+			<title>${__("Invoice - {0}", [safe.name])}</title>
 			<style>
 				* {
 					margin: 0;
@@ -269,66 +329,66 @@ function printInvoiceCustom(invoiceData) {
 		</head>
 		<body>
 			<div class="receipt">
-				<!-- Header -->
 				<div class="header">
-					<div class="company-name">${invoiceData.company || "POS Next"}</div>
-					<div style="font-size: 12px;">${__('TAX INVOICE')}</div>
+					<div class="company-name">${safe.company || "POS Next"}</div>
+					<div style="font-size: 12px;">${__("TAX INVOICE")}</div>
 				</div>
 
-				<!-- Invoice Info -->
 				<div class="invoice-info">
 					<div>
-						<span>${__('Invoice #:')}</span>
-						<span><strong>${invoiceData.name}</strong></span>
+						<span>${__("Invoice #:")}</span>
+						<span><strong>${safe.name}</strong></span>
 					</div>
 					<div>
-						<span>${__('Date:')}</span>
-						<span>${new Date(invoiceData.posting_date || Date.now()).toLocaleString()}</span>
+						<span>${__("Date:")}</span>
+						<span>${new Date(safe.posting_date || Date.now()).toLocaleString()}</span>
 					</div>
 					${
-						invoiceData.customer_name
+						safe.customer_name
 							? `
 					<div>
-						<span>${__('Customer:')}</span>
-						<span>${invoiceData.customer_name}</span>
+						<span>${__("Customer:")}</span>
+						<span>${safe.customer_name}</span>
 					</div>
 					`
 							: ""
 					}
 					${
-						(invoiceData.status === "Partly Paid" || (invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0 && invoiceData.outstanding_amount < invoiceData.grand_total))
+						(safe.status === "Partly Paid" ||
+							(safe.outstanding_amount &&
+								safe.outstanding_amount > 0 &&
+								safe.outstanding_amount < safe.grand_total))
 							? `
 					<div class="partial-status">
-						<span>${__('Status:')}</span>
-						<span>${__('PARTIAL PAYMENT')}</span>
+						<span>${__("Status:")}</span>
+						<span>${__("PARTIAL PAYMENT")}</span>
 					</div>
 					`
 							: ""
 					}
 				</div>
 
-				<!-- Items -->
 				<div class="items-table">
-					${invoiceData.items
+					${safe.items
 						.map((item) => {
-							// Determine if item has promotional pricing
+							if (!item) {
+								return ""
+							}
 							const hasItemDiscount =
 								(item.discount_percentage &&
 									Number.parseFloat(item.discount_percentage) > 0) ||
 								(item.discount_amount &&
 									Number.parseFloat(item.discount_amount) > 0)
 							const isFree = item.is_free_item
-							const qty = item.quantity || item.qty
+							const qty = item.quantity || item.qty || 0
 
-							// Display original list price for transparency
-							const displayRate = item.price_list_rate || item.rate
-							// Calculate subtotal before any price reductions
-							const subtotal = qty * displayRate
+							const displayRate = item.price_list_rate || item.rate || 0
+							const subtotal = Number(qty) * Number(displayRate)
 
 							return `
 						<div class="item-row">
 							<div class="item-name">
-								${item.item_name || item.item_code} ${isFree ? __('(FREE)') : ""}
+								${item.item_name || item.item_code} ${isFree ? __("(FREE)") : ""}
 							</div>
 							<div class="item-details">
 								<span>${qty} × ${formatCurrency(displayRate)}</span>
@@ -348,8 +408,8 @@ function printInvoiceCustom(invoiceData) {
 								item.serial_no
 									? `
 							<div class="item-serials">
-								<div class="item-serials-label">${__('Serial No:')}</div>
-								<div class="item-serials-list">${item.serial_no.replace(/\n/g, ', ')}</div>
+								<div class="item-serials-label">${__("Serial No:")}</div>
+								<div class="item-serials-list">${String(item.serial_no).replace(/\n/g, ", ")}</div>
 							</div>
 							`
 									: ""
@@ -360,75 +420,80 @@ function printInvoiceCustom(invoiceData) {
 						.join("")}
 				</div>
 
-				<!-- Totals -->
 				<div class="totals">
 					${
-						invoiceData.total_taxes_and_charges &&
-						invoiceData.total_taxes_and_charges > 0
+						safe.total_taxes_and_charges &&
+						safe.total_taxes_and_charges > 0
 							? `
 					<div class="total-row">
-						<span>${__('Subtotal:')}</span>
-						<span>${formatCurrency((invoiceData.grand_total || 0) - (invoiceData.total_taxes_and_charges || 0))}</span>
+						<span>${__("Subtotal:")}</span>
+						<span>${formatCurrency((safe.grand_total || 0) - (safe.total_taxes_and_charges || 0))}</span>
 					</div>
 					<div class="total-row">
-						<span>${__('Tax:')}</span>
-						<span>${formatCurrency(invoiceData.total_taxes_and_charges)}</span>
+						<span>${__("Tax:")}</span>
+						<span>${formatCurrency(safe.total_taxes_and_charges)}</span>
 					</div>
 					`
 							: ""
 					}
 					${
-						invoiceData.discount_amount
+						safe.discount_amount
 							? `
 					<div class="total-row" style="color: #28a745;">
-						<span>Additional Discount${invoiceData.additional_discount_percentage ? ` (${Number(invoiceData.additional_discount_percentage).toFixed(1)}%)` : ""}:</span>
-						<span>-${formatCurrency(Math.abs(invoiceData.discount_amount))}</span>
+						<span>Additional Discount${safe.additional_discount_percentage ? ` (${Number(safe.additional_discount_percentage).toFixed(1)}%)` : ""}:</span>
+						<span>-${formatCurrency(Math.abs(safe.discount_amount))}</span>
 					</div>
 					`
 							: ""
 					}
 					<div class="total-row grand-total">
-						<span>${__('TOTAL:')}</span>
-						<span>${formatCurrency(invoiceData.grand_total)}</span>
+						<span>${__("TOTAL:")}</span>
+						<span>${formatCurrency(safe.grand_total)}</span>
 					</div>
 				</div>
 
-				<!-- Payments -->
 				${
-					invoiceData.payments && invoiceData.payments.length > 0
+					safe.payments.length > 0
 						? `
 				<div class="payments">
 					<div style="font-weight: bold; margin-bottom: 5px; font-size: 12px;">Payments:</div>
-					${invoiceData.payments
+					${safe.payments
 						.map(
-							(payment) => `
+							(payment) => {
+								if (!payment) {
+									return ""
+								}
+								const mode = payment.mode_of_payment || __("Payment")
+								const amt = payment.amount
+								return `
 						<div class="payment-row">
-							<span>${payment.mode_of_payment}:</span>
-							<span>${formatCurrency(payment.amount)}</span>
+							<span>${mode}:</span>
+							<span>${formatCurrency(amt)}</span>
 						</div>
-					`,
+					`
+							},
 						)
 						.join("")}
 					<div class="payment-row total-paid">
-						<span>${__('Total Paid:')}</span>
-						<span>${formatCurrency(invoiceData.paid_amount || 0)}</span>
+						<span>${__("Total Paid:")}</span>
+						<span>${formatCurrency(safe.paid_amount || 0)}</span>
 					</div>
 					${
-						invoiceData.change_amount && invoiceData.change_amount > 0
+						safe.change_amount && safe.change_amount > 0
 							? `
 					<div class="payment-row" style="font-weight: bold; margin-top: 5px;">
-						<span>${__('Change:')}</span>
-						<span>${formatCurrency(invoiceData.change_amount)}</span>
+						<span>${__("Change:")}</span>
+						<span>${formatCurrency(safe.change_amount)}</span>
 					</div>
 					`
 							: ""
 					}
 					${
-						invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0
+						safe.outstanding_amount && safe.outstanding_amount > 0
 							? `
 					<div class="outstanding-row">
-						<span>${__('BALANCE DUE:')}</span>
-						<span>${formatCurrency(invoiceData.outstanding_amount)}</span>
+						<span>${__("BALANCE DUE:")}</span>
+						<span>${formatCurrency(safe.outstanding_amount)}</span>
 					</div>
 					`
 							: ""
@@ -438,9 +503,8 @@ function printInvoiceCustom(invoiceData) {
 						: ""
 				}
 
-				<!-- Footer -->
 				<div class="footer">
-					<div style="margin-bottom: 5px;">${__('Thank you for your business!')}</div>
+					<div style="margin-bottom: 5px;">${__("Thank you for your business!")}</div>
 					<div style="font-size: 10px; color: #6b7280; margin-top: 8px;">
 						Powered by <a href="https://bazaks.com" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Bazaks</a>
 					</div>
@@ -449,10 +513,10 @@ function printInvoiceCustom(invoiceData) {
 
 			<div class="no-print" style="text-align: center; margin-top: 20px;">
 				<button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">
-					${__('Print Receipt')}
+					${__("Print Receipt")}
 				</button>
 				<button onclick="window.close()" style="padding: 10px 20px; font-size: 14px; cursor: pointer; margin-left: 10px;">
-					${__('Close')}
+					${__("Close")}
 				</button>
 			</div>
 		</body>
@@ -462,12 +526,18 @@ function printInvoiceCustom(invoiceData) {
 	printWindow.document.write(printContent)
 	printWindow.document.close()
 
-	// Auto print after load
 	printWindow.onload = () => {
 		setTimeout(() => {
 			printWindow.print()
 		}, 250)
 	}
+
+	return true
+}
+
+/** Thermal HTML receipt when PDF/printview is unavailable (e.g. popup blocked). */
+export function printThermalReceipt(invoiceData) {
+	return printInvoiceCustom(invoiceData)
 }
 
 function formatCurrency(amount) {
@@ -485,38 +555,53 @@ export async function printInvoiceByName(
 	printFormat = null,
 	letterhead = null,
 ) {
-	try {
-		// Fetch the invoice document using proper POS API endpoint
-		const invoiceDoc = await call("pos_next.api.invoices.get_invoice", {
-			invoice_name: invoiceName,
-		})
-
-		if (!invoiceDoc) {
-			throw new Error("Invoice not found")
-		}
-
-		// If no print format specified and invoice has a POS Profile, fetch its print settings
-		if (!printFormat && invoiceDoc.pos_profile) {
-			try {
-				const posProfileDoc = await call("frappe.client.get", {
-					doctype: "POS Profile",
-					name: invoiceDoc.pos_profile,
-				})
-
-				if (posProfileDoc) {
-					printFormat = posProfileDoc.print_format
-					letterhead = letterhead || posProfileDoc.letter_head
-				}
-			} catch (error) {
-				log.warn("Could not fetch POS Profile print settings:", error)
-				// Continue with default print format
-			}
-		}
-
-		// Print the invoice
-		return await printInvoice(invoiceDoc, printFormat, letterhead)
-	} catch (error) {
-		log.error("Error fetching invoice for print:", error)
-		throw error
+	const trimmed = String(invoiceName || "").trim()
+	if (!trimmed) {
+		throw new Error(__("Invoice name is required"))
 	}
+
+	const offlineMatch = /^OFFLINE-(\d+)$/i.exec(trimmed)
+	if (offlineMatch) {
+		const row = await offlineWorker.getOfflineInvoiceById(offlineMatch[1])
+		if (row?.data) {
+			return printInvoiceCustom(offlineQueueRowToInvoice(row, trimmed))
+		}
+		throw new Error(
+			__("Offline receipt not found. It may have already synced."),
+		)
+	}
+
+	if (typeof navigator !== "undefined" && navigator.onLine === false) {
+		throw new Error(
+			__(
+				"You are offline. You can only print receipts saved in the offline queue (OFFLINE-…).",
+			),
+		)
+	}
+
+	const invoiceDoc = await call("pos_next.api.invoices.get_invoice", {
+		invoice_name: trimmed,
+	})
+
+	if (!invoiceDoc) {
+		throw new Error(__("Invoice not found"))
+	}
+
+	if (!printFormat && invoiceDoc.pos_profile) {
+		try {
+			const posProfileDoc = await call("frappe.client.get", {
+				doctype: "POS Profile",
+				name: invoiceDoc.pos_profile,
+			})
+
+			if (posProfileDoc) {
+				printFormat = posProfileDoc.print_format
+				letterhead = letterhead || posProfileDoc.letter_head
+			}
+		} catch (error) {
+			log.warn("Could not fetch POS Profile print settings:", error)
+		}
+	}
+
+	return await printInvoice(invoiceDoc, printFormat, letterhead)
 }

@@ -399,7 +399,7 @@
 			<div v-else class="flex flex-col gap-0.5 sm:gap-1">
 				<div
 					v-for="(item, index) in items"
-					:key="index"
+					:key="item.lineId || `cart-${index}`"
 					@click="openEditDialog(item)"
 					class="bg-white border border-gray-200 rounded-md p-1.5 sm:p-2 hover:border-blue-300 hover:shadow-md transition-all duration-200 active:scale-[0.99] cursor-pointer group"
 				>
@@ -464,7 +464,7 @@
 								</div>
 								<button
 									type="button"
-									@click.stop="$emit('remove-item', item.item_code)"
+									@click.stop="$emit('remove-item', item.lineId || item.item_code)"
 									class="text-gray-400 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 p-0.5 -m-0.5 touch-manipulation active:scale-90"
 									:aria-label="__('Remove {0}', [item.item_name])"
 									:title="__('Remove item')"
@@ -498,8 +498,59 @@
 											<FeatherIcon name="edit-2" class="w-3 h-3" />
 										</button>
 									</div>
+									<!-- Batch + Serial and Batch Bundle: qty tied to bundle — edit in dialog only -->
+									<div
+										v-else-if="item.has_batch_no && item.serial_and_batch_bundle"
+										class="flex items-center gap-1"
+									>
+										<div
+											class="flex items-center bg-amber-50 border border-amber-200 rounded px-1.5 h-6 sm:h-7 min-w-0"
+										>
+											<svg
+												class="w-3 h-3 text-amber-600 me-0.5 flex-shrink-0"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+												/>
+											</svg>
+											<span
+												class="text-[10px] sm:text-xs font-bold text-amber-900 truncate max-w-[4.5rem] sm:max-w-[6rem]"
+												:title="
+													item._bundle_data?.entries?.length > 1
+														? __('Multiple batches — edit to change')
+														: item.batch_no || __('Batch')
+												"
+											>
+												{{
+													item._bundle_data?.entries?.length > 1
+														? __('Batches ({0})', [item._bundle_data.entries.length])
+														: item.batch_no || __('Batch')
+												}}
+											</span>
+										</div>
+										<span class="text-xs sm:text-sm font-bold text-gray-800 tabular-nums">{{
+											item.quantity
+										}}</span>
+										<button
+											type="button"
+											@click="openEditDialog(item)"
+											class="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded transition-colors shadow-sm"
+											:title="__('Edit batches and quantity')"
+										>
+											<FeatherIcon name="edit-2" class="w-3 h-3" />
+										</button>
+									</div>
 									<!-- For non-serial items, show normal quantity controls -->
-									<div v-else class="flex items-center bg-gray-50 border border-gray-200 rounded overflow-hidden">
+									<div
+										v-else
+										class="flex items-center bg-gray-50 border border-gray-200 rounded overflow-hidden"
+									>
 										<button
 											type="button"
 											@click="decrementQuantity(item)"
@@ -549,7 +600,7 @@
 										<template v-else>
 											<button
 												type="button"
-												@click="toggleUomDropdown(item.item_code)"
+												@click="toggleUomDropdown(cartLineRef(item))"
 												:disabled="getOtherUoms(item).length === 0"
 												:class="[
 													'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
@@ -564,7 +615,7 @@
 											<svg
 												:class="[
 													'absolute end-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none transition-transform',
-													openUomDropdown === item.item_code ? 'rotate-180' : '',
+													openUomDropdown === cartLineRef(item) ? 'rotate-180' : '',
 													getOtherUoms(item).length > 0 ? 'text-white' : 'text-gray-400'
 												]"
 												fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -572,7 +623,7 @@
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
 											</svg>
 											<div
-												v-if="openUomDropdown === item.item_code && getOtherUoms(item).length > 0"
+												v-if="openUomDropdown === cartLineRef(item) && getOtherUoms(item).length > 0"
 												class="absolute top-full start-0 mt-0.5 bg-white border border-blue-300 rounded shadow-xl z-50 min-w-full overflow-hidden"
 											>
 												<button
@@ -811,8 +862,8 @@ const props = defineProps({
  * Events emitted to parent component for cart operations
  */
 const emit = defineEmits([
-	"update-quantity",    // (itemCode, newQty) - Update item quantity
-	"remove-item",        // (itemCode) - Remove item from cart
+	"update-quantity",    // (lineIdOrCode, newQty) - Update item quantity
+	"remove-item",        // (lineIdOrCode) - Remove item from cart
 	"select-customer",    // (customer) - Select/change customer
 	"create-customer",    // (searchText) - Open create customer dialog
 	"proceed-to-payment", // () - Navigate to payment screen
@@ -822,7 +873,7 @@ const emit = defineEmits([
 	"show-coupons",       // () - Show available coupons
 	"show-offers",        // () - Show available offers dialog
 	"remove-offer",       // (offerId) - Remove applied offer
-	"update-uom",         // (itemCode, newUom) - Change item's unit of measure
+	"update-uom",         // (lineIdOrCode, newUom) - Change item's unit of measure
 	"edit-item",          // (item) - Open item edit dialog
 	"view-shift",         // () - View current shift details
 	"show-drafts",        // () - Show draft/held orders
@@ -850,7 +901,7 @@ const annualBillingLoading = ref(false)     // Loading state for annual billing
 const showEditDialog = ref(false)           // Controls edit dialog visibility
 const selectedItem = ref(null)              // Item being edited
 
-// UOM dropdown state - tracks which item's UOM dropdown is open (by item_code)
+// UOM dropdown state - tracks which line is open (lineId preferred, else item_code)
 const openUomDropdown = ref(null)
 
 /**
@@ -1234,6 +1285,11 @@ function formatCurrency(amount) {
 // Quantity Control Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Stable cart line key for updates (duplicate SKUs with different batches/bundles). */
+function cartLineRef(item) {
+	return item?.lineId || item?.item_code
+}
+
 /**
  * Intelligently determine the step size based on current quantity.
  * - Whole numbers (1, 2, 3): step by 1
@@ -1279,7 +1335,7 @@ function getSmartStep(quantity) {
 function incrementQuantity(item) {
 	const step = getSmartStep(item.quantity)
 	const newQty = Math.round((item.quantity + step) * 10000) / 10000
-	emit("update-quantity", item.item_code, newQty)
+	emit("update-quantity", cartLineRef(item), newQty)
 }
 
 /**
@@ -1294,9 +1350,9 @@ function decrementQuantity(item) {
 
 	if (newQty <= 0) {
 		// If quantity would be 0 or negative, remove the item
-		emit("remove-item", item.item_code)
+		emit("remove-item", cartLineRef(item))
 	} else {
-		emit("update-quantity", item.item_code, newQty)
+		emit("update-quantity", cartLineRef(item), newQty)
 	}
 }
 
@@ -1311,7 +1367,7 @@ function updateQuantity(item, value) {
 	const qty = Number.parseFloat(value)
 	// Allow any positive number during typing (don't round yet)
 	if (!isNaN(qty) && qty > 0) {
-		emit("update-quantity", item.item_code, qty)
+		emit("update-quantity", cartLineRef(item), qty)
 	}
 }
 
@@ -1327,12 +1383,12 @@ function handleQuantityBlur(item) {
 	// When user leaves the input field, round and validate
 	if (!item.quantity || item.quantity <= 0) {
 		// If quantity is 0 or invalid, remove the item
-		emit("remove-item", item.item_code)
+		emit("remove-item", cartLineRef(item))
 	} else {
 		// Round to 4 decimal places for consistency
 		const roundedQty = Math.round(item.quantity * 10000) / 10000
 		if (roundedQty !== item.quantity) {
-			emit("update-quantity", item.item_code, roundedQty)
+			emit("update-quantity", cartLineRef(item), roundedQty)
 		}
 	}
 }
@@ -1349,10 +1405,10 @@ function handleQuantityBlur(item) {
  * @param {String} newUom - New unit of measure (e.g., "Kg", "Box")
  */
 async function handleUomChange(item, newUom) {
-	await cartStore.changeItemUOM(item.item_code, newUom)
+	await cartStore.changeItemUOM(cartLineRef(item), newUom)
 	openUomDropdown.value = null // Close dropdown after selection
 	// Also emit for parent component compatibility
-	emit("update-uom", item.item_code, newUom)
+	emit("update-uom", cartLineRef(item), newUom)
 }
 
 /**
@@ -1411,7 +1467,10 @@ function openEditDialog(item) {
  */
 async function handleUpdateItem(updatedItem) {
 	// Use store method to update item
-	await cartStore.updateItemDetails(updatedItem.item_code, updatedItem)
+	await cartStore.updateItemDetails(
+		updatedItem.lineId || updatedItem.item_code,
+		updatedItem,
+	)
 	// Also emit for parent component compatibility
 	emit("edit-item", updatedItem)
 }

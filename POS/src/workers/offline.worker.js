@@ -374,6 +374,29 @@ async function getOfflineInvoiceCount() {
 	}
 }
 
+// Get a single queued offline invoice by primary key (for printing / lookup)
+async function getOfflineInvoiceById(rawId) {
+	try {
+		const database = await initDB()
+		const tableExists = database.tables.some((table) => table.name === "invoice_queue")
+		if (!tableExists) {
+			return null
+		}
+		const id = Number.parseInt(String(rawId), 10)
+		if (!Number.isFinite(id)) {
+			return null
+		}
+		const row = await database.table("invoice_queue").get(id)
+		if (!row || row.synced) {
+			return null
+		}
+		return row
+	} catch (error) {
+		log.error("Error getting offline invoice by id", error)
+		return null
+	}
+}
+
 // Get offline invoices
 async function getOfflineInvoices() {
 	try {
@@ -1309,6 +1332,10 @@ self.onmessage = async (event) => {
 
 			case "GET_INVOICES":
 				result = await getOfflineInvoices()
+				break
+
+			case "GET_OFFLINE_INVOICE_BY_ID":
+				result = await getOfflineInvoiceById(payload.id)
 				break
 
 			case "SAVE_INVOICE":

@@ -337,6 +337,17 @@
 												:label="__('Silent Print')"
 												:description="__('Print without confirmation')"
 											/>
+											<div class="mt-4 pt-4 border-t border-teal-200">
+												<p class="text-xs text-gray-600 mb-3 leading-relaxed">
+													{{ __('The browser cannot send print jobs to a named device directly. Choose your default printer in the system print dialog, or pick a name below for reference (and when using server-side printing).') }}
+												</p>
+												<SelectField
+													v-model="defaultPrinter"
+													:label="__('Default printer (this device)')"
+													:options="printerSelectOptions"
+													:description="__('From CUPS when the app server has lpstat; otherwise leave empty and set the default in your operating system.')"
+												/>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -373,6 +384,7 @@ import {
 	icons,
 } from "./settingsConfig"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import { getLocalPrintSettings, setLocalPrintSettings } from "@/utils/localPrintSettings"
 import { logger } from "@/utils/logger"
 import { usePOSEvents } from "@/composables/usePOSEvents"
 import TranslatedHTML from "../common/TranslatedHTML.vue"
@@ -423,6 +435,19 @@ const stockSyncStatus = ref({
 	intervalMs: 60000,
 	lastSync: null,
 	running: false
+})
+
+// Local device print preference (localStorage)
+const defaultPrinter = ref("")
+const printerOptionsFromServer = ref([])
+
+const printerSelectOptions = computed(() => {
+	const base = [{ label: __("-- System / browser default --"), value: "" }]
+	const rest = printerOptionsFromServer.value.map((p) => ({
+		label: p.label || p.name,
+		value: p.name,
+	}))
+	return base.concat(rest)
 })
 
 // Warehouse options
@@ -521,6 +546,22 @@ function handleClose() {
 	show.value = false
 }
 
+async function loadPrinterOptions() {
+	try {
+		const res = await call("pos_next.api.printing.get_system_printers")
+		const list = res?.message ?? res ?? []
+		printerOptionsFromServer.value = Array.isArray(list) ? list : []
+	} catch (error) {
+		log.debug("Printer list unavailable (expected on some hosts):", error)
+		printerOptionsFromServer.value = []
+	}
+}
+
+function loadLocalPrintPreferences() {
+	const prefs = getLocalPrintSettings()
+	defaultPrinter.value = prefs.defaultPrinter || ""
+}
+
 async function loadSettings() {
 	if (!props.posProfile) return
 	loading.value = true
@@ -528,6 +569,8 @@ async function loadSettings() {
 
 	// Always set the current warehouse from props (from current shift/profile)
 	selectedWarehouse.value = props.currentWarehouse || ""
+
+	loadLocalPrintPreferences()
 
 	try {
 		// Load warehouses first using call API directly
@@ -540,6 +583,8 @@ async function loadSettings() {
 
 		// Handle frappe-ui call response format { message: [...] }
 		warehousesList.value = warehousesData?.message || warehousesData || []
+
+		await loadPrinterOptions()
 
 		// Load settings
 		settingsResource.reload()
@@ -584,6 +629,8 @@ async function saveSettings() {
 			// Update original values after successful save
 			originalAllowNegativeStock.value = result.allow_negative_stock
 		}
+
+		setLocalPrintSettings({ defaultPrinter: defaultPrinter.value })
 
 		// Update warehouse in POS Profile if changed
 		if (warehouseChanged && selectedWarehouse.value) {
