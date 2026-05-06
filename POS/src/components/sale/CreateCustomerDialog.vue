@@ -422,7 +422,47 @@ const handleCreate = async () => {
 	if (!customerData.value.customer_name) {
 		return showError(__("Customer Name is required"))
 	}
+
+	if (isCustomerNameSameAsMobile()) {
+		const shouldContinue = window.confirm(
+			__(
+				"Customer name matches the mobile number. Do you want to continue creating this customer?",
+			),
+		)
+		if (!shouldContinue) {
+			return
+		}
+	}
+
 	await createCustomerResource.submit()
+}
+
+const normalizeDigits = (value) => String(value || "").replace(/\D/g, "")
+
+const normalizeText = (value) => String(value || "").trim().toLowerCase()
+
+const isCustomerNameSameAsMobile = () => {
+	const customerName = customerData.value.customer_name
+	const mobileNo = customerData.value.mobile_no
+	const phone = phoneNumber.value
+
+	if (!customerName || (!mobileNo && !phone)) {
+		return false
+	}
+
+	const normalizedName = normalizeText(customerName)
+	const mobileValues = [mobileNo, phone].filter(Boolean)
+
+	if (mobileValues.some((value) => normalizeText(value) === normalizedName)) {
+		return true
+	}
+
+	const nameDigits = normalizeDigits(customerName)
+	if (!nameDigits) {
+		return false
+	}
+
+	return mobileValues.some((value) => normalizeDigits(value) === nameDigits)
 }
 
 const resetForm = () => {

@@ -221,9 +221,11 @@
 						:currency="shiftStore.profileCurrency"
 						:applied-offers="cartStore.appliedOffers"
 						:warehouses="profileWarehouses"
+						:loaded-delivery-notes="loadedDeliveryNotes"
 						@update-quantity="cartStore.updateItemQuantity"
 						@remove-item="cartStore.removeItem"
 						@select-customer="handleCustomerSelected"
+						@show-customer-search="uiStore.showCustomerDialog = true"
 						@create-customer="handleCreateCustomer"
 						@proceed-to-payment="handleProceedToPayment"
 						@clear-cart="handleClearCart"
@@ -1537,6 +1539,15 @@ function handleAdditionalDiscountUpdate(discountAmount) {
 }
 
 function handleCustomerSelected(selectedCustomer) {
+	const currentCustomer = cartStore.customer?.name || cartStore.customer || null
+	const nextCustomer = selectedCustomer?.name || selectedCustomer || null
+	if (currentCustomer !== nextCustomer && loadedDeliveryNotes.value.length > 0) {
+		const removed = cartStore.removeDeliveryNoteItems()
+		if (removed > 0) {
+			showWarning(__("Removed {0} Delivery Note item(s) because the customer changed", [String(removed)]))
+		}
+	}
+
 	if (selectedCustomer) {
 		cartStore.setCustomer(selectedCustomer)
 		uiStore.showCustomerDialog = false
@@ -2113,6 +2124,12 @@ function handleCreateReturnFromHistory(invoice) {
 }
 
 function handleCustomerCreated(newCustomer) {
+	if (loadedDeliveryNotes.value.length > 0) {
+		const removed = cartStore.removeDeliveryNoteItems()
+		if (removed > 0) {
+			showWarning(__("Removed {0} Delivery Note item(s) because the customer changed", [String(removed)]))
+		}
+	}
 	cartStore.setCustomer(newCustomer)
 	uiStore.showCreateCustomerDialog = false
 	showSuccess(__('{0} created and selected', [newCustomer.customer_name]))

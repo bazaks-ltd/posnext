@@ -111,6 +111,16 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		customer.value = selectedCustomer
 	}
 
+	function removeDeliveryNoteItems() {
+		const deliveryNoteItems = invoiceItems.value.filter(
+			(item) => item.delivery_note || item.dn_detail,
+		)
+		for (const item of deliveryNoteItems) {
+			removeItem(item.lineId || item.item_code)
+		}
+		return deliveryNoteItems.length
+	}
+
 	function setPendingItem(item, qty = 1, mode = "uom") {
 		pendingItem.value = item
 		pendingItemQty.value = qty
@@ -819,6 +829,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		updateItemQuantity,
 		clearCart,
 		setCustomer,
+		removeDeliveryNoteItems,
 		setDefaultCustomer,
 		setPendingItem,
 		clearPendingItem,
