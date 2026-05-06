@@ -237,6 +237,7 @@
 						@show-drafts="uiStore.showDraftDialog = true"
 						@show-history="uiStore.showHistoryDialog = true"
 						@show-return="uiStore.showReturnDialog = true"
+						@show-delivery-notes="uiStore.showDeliveryNoteDialog = true"
 						@close-shift="handleCloseShift()"
 					/>
 				</div>
@@ -350,6 +351,15 @@
 			:applied-coupon="cartStore.appliedCoupon"
 			@discount-applied="handleDiscountApplied"
 			@discount-removed="handleDiscountRemoved"
+		/>
+
+		<DeliveryNoteDialog
+			v-model="uiStore.showDeliveryNoteDialog"
+			:customer="cartStore.customer"
+			:company="shiftStore.profileCompany"
+			:pos-profile="shiftStore.profileName"
+			:loaded-delivery-notes="loadedDeliveryNotes"
+			@items-added="handleDeliveryNoteItems"
 		/>
 
 		<!-- Offers Dialog -->
@@ -770,6 +780,7 @@ import ManagementSlider from "@/components/pos/ManagementSlider.vue"
 import POSHeader from "@/components/pos/POSHeader.vue"
 import BatchSerialDialog from "@/components/sale/BatchSerialDialog.vue"
 import CouponDialog from "@/components/sale/CouponDialog.vue"
+import DeliveryNoteDialog from "@/components/sale/DeliveryNoteDialog.vue"
 import CreateCustomerDialog from "@/components/sale/CreateCustomerDialog.vue"
 import CustomerDialog from "@/components/sale/CustomerDialog.vue"
 import DraftInvoicesDialog from "@/components/sale/DraftInvoicesDialog.vue"
@@ -861,6 +872,16 @@ const pendingPaymentAfterCustomer = ref(false)
 const logoutAfterClose = ref(false)
 const showClearCacheDialog = ref(false)
 const clearCacheOverlayRef = ref(null)
+
+const loadedDeliveryNotes = computed(() => {
+	return [
+		...new Set(
+			(cartStore.invoiceItems || [])
+				.map((item) => item.delivery_note)
+				.filter(Boolean),
+		),
+	]
+})
 
 // Debounce timer for offer reapplication
 const offerReapplyTimer = ref(null)
@@ -1987,6 +2008,43 @@ function handleDiscountApplied(discount) {
 
 function handleDiscountRemoved() {
 	cartStore.removeDiscountFromCart()
+}
+
+function handleDeliveryNoteItems({ items, delivery_note }) {
+	if (!Array.isArray(items) || items.length === 0) return
+
+	if (delivery_note && loadedDeliveryNotes.value.includes(delivery_note)) {
+		showWarning(__("Delivery Note {0} is already in the cart", [delivery_note]))
+		return
+	}
+
+	let added = 0
+	for (const line of items) {
+		const qty = Number.parseFloat(line.quantity) || 1
+		try {
+			cartStore.addItem(line, qty, false, shiftStore.currentProfile)
+			added++
+		} catch (e) {
+			showWarning(
+				e?.message ||
+					__("Could not add item {0}", [line.item_code || ""]),
+			)
+			break
+		}
+	}
+	if (added > 0) {
+		showSuccess(
+			added === items.length
+				? __("Added {0} line(s) from Delivery Note {1}", [
+						String(added),
+						delivery_note || "",
+					])
+				: __("Added {0} of {1} line(s) from delivery note", [
+						String(added),
+						String(items.length),
+					]),
+		)
+	}
 }
 
 async function handleApplyOffer(offer) {

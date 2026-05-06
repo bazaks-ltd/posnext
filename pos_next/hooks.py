@@ -187,9 +187,9 @@ standard_queries = {
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Sales Invoice": "pos_next.overrides.sales_invoice.POSNextSalesInvoice"
+}
 
 # Document Events
 # ---------------

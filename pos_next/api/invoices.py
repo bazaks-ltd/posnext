@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 import json
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
+from frappe.utils import flt, cint, nowdate, get_datetime, cstr
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 
@@ -206,7 +206,9 @@ def _validate_stock_on_invoice(invoice_doc):
     items_to_check = [
         d.as_dict()
         for d in invoice_doc.items
-        if d.get("is_stock_item") and not d.get("serial_and_batch_bundle")
+        if d.get("is_stock_item")
+        and not d.get("serial_and_batch_bundle")
+        and not (d.get("delivery_note") or d.get("dn_detail"))
     ]
 
     # Include packed items if present (same exclusions)
@@ -223,6 +225,32 @@ def _validate_stock_on_invoice(invoice_doc):
     # Throw error if stock insufficient and blocking is enabled
     if errors and _should_block(invoice_doc.pos_profile):
         frappe.throw(frappe.as_json({"errors": errors}), frappe.ValidationError)
+
+
+def _finalize_delivery_notes_billed_by_invoice(invoice_doc):
+    """Refresh linked Delivery Note billing/status after POS invoice submit.
+
+    Sales Invoice.on_submit normally updates DN billed amounts. This is an
+    explicit safety pass for POS carts that bill existing clinical DNs while
+    also updating stock for normal POS rows, ensuring completed DNs no longer
+    remain in the billable list.
+    """
+    delivery_notes = {
+        row.get("delivery_note")
+        for row in invoice_doc.get("items", [])
+        if row.get("delivery_note") or row.get("dn_detail")
+    }
+    delivery_notes.discard(None)
+    delivery_notes.discard("")
+
+    for delivery_note in delivery_notes:
+        if not frappe.db.exists("Delivery Note", delivery_note):
+            continue
+        dn_doc = frappe.get_doc("Delivery Note", delivery_note)
+        if dn_doc.docstatus != 1:
+            continue
+        dn_doc.update_billing_percentage(update_modified=True)
+        dn_doc.set_status(update=True)
 
 
 def _auto_set_return_batches(invoice_doc):
@@ -646,7 +674,9 @@ def submit_invoice(invoice=None, data=None):
 
         invoice_name_to_cleanup = invoice_doc.name
 
-        # Ensure update_stock is set
+        # Keep POS stock update enabled. POSNextSalesInvoice skips DN-linked
+        # rows during stock operations because those rows already moved stock
+        # through their Delivery Note.
         invoice_doc.update_stock = 1
 
         # Copy accounting dimensions from POS Profile if not already set
@@ -711,7 +741,8 @@ def submit_invoice(invoice=None, data=None):
                 ) or 0
             )
 
-        # Validate stock availability only if negative stock is not allowed
+        # Validate stock availability only if negative stock is not allowed.
+        # DN-linked rows are skipped because their stock was already moved by DN.
         if not pos_settings_allow_negative:
             _validate_stock_on_invoice(invoice_doc)
 
@@ -720,12 +751,12 @@ def submit_invoice(invoice=None, data=None):
         frappe.flags.ignore_account_permission = True
         invoice_doc.save()
 
-        # Submit invoice with error handling (ignore_permissions so SLE -> Serial and Batch Bundle submit succeeds)
-        # Note: Negative stock handling is now done through the CustomSalesInvoice override
-        # which checks POS Settings in the update_stock_ledger method
+        # Submit invoice with error handling (ignore_permissions so SLE -> Serial and Batch Bundle submit succeeds).
+        # POSNextSalesInvoice skips Delivery Note-linked rows during stock operations.
         try:
             invoice_doc.flags.ignore_permissions = True
             invoice_doc.submit()
+            _finalize_delivery_notes_billed_by_invoice(invoice_doc)
         except Exception as submit_error:
             _delete_draft_invoice_on_submit_error(invoice_doc.name)
             raise submit_error

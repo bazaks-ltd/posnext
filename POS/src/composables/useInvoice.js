@@ -189,7 +189,14 @@ export function useInvoice() {
 		const existingItem = invoiceItems.value.find((i) => {
 			// Items must have same item_code
 			if (i.item_code !== item.item_code) return false
-			
+
+			// Delivery Note lines: only merge the same DN row (distinct dn_detail)
+			const itemDn = item.dn_detail || null
+			const iDn = i.dn_detail || null
+			if (itemDn || iDn) {
+				return Boolean(itemDn && iDn && itemDn === iDn)
+			}
+
 			// If item has a bundle, it should NOT be merged with other items
 			// Each bundle is a separate line item
 			if (item.serial_and_batch_bundle || i.serial_and_batch_bundle) {
@@ -272,6 +279,10 @@ export function useInvoice() {
 				variant_of: item.variant_of,
 				template_item: item.template_item,
 				lineId: item.lineId || createLineId(),
+				dn_detail: item.dn_detail,
+				delivery_note: item.delivery_note,
+				sales_order: item.sales_order,
+				so_detail: item.so_detail,
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes
@@ -729,7 +740,20 @@ export function useInvoice() {
 						itemData.serial_no = item.serial_no
 					}
 				}
-				
+
+				if (item.dn_detail) {
+					itemData.dn_detail = item.dn_detail
+				}
+				if (item.delivery_note) {
+					itemData.delivery_note = item.delivery_note
+				}
+				if (item.sales_order) {
+					itemData.sales_order = item.sales_order
+				}
+				if (item.so_detail) {
+					itemData.so_detail = item.so_detail
+				}
+
 				return itemData
 			}),
 			payments: rawPayments.map((p) => ({
@@ -805,7 +829,20 @@ export function useInvoice() {
 							itemData.serial_no = item.serial_no
 						}
 					}
-					
+
+					if (item.dn_detail) {
+						itemData.dn_detail = item.dn_detail
+					}
+					if (item.delivery_note) {
+						itemData.delivery_note = item.delivery_note
+					}
+					if (item.sales_order) {
+						itemData.sales_order = item.sales_order
+					}
+					if (item.so_detail) {
+						itemData.so_detail = item.so_detail
+					}
+
 					return itemData
 				}),
 				payments: rawPayments.map((p) => ({
