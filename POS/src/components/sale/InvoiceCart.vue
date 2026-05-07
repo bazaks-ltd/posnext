@@ -924,6 +924,7 @@ const selectedIndex = ref(-1)               // Keyboard navigation index for sea
 const availableGiftCards = ref([])          // Available gift cards for current customer
 const annualBillingInfo = ref(null)         // Annual billing indicator for selected customer
 const annualBillingLoading = ref(false)     // Loading state for annual billing
+const customerSearchRequestId = ref(0)
 
 // Edit item dialog state
 const showEditDialog = ref(false)           // Controls edit dialog visibility
@@ -1193,6 +1194,39 @@ const totalQuantity = computed(() => {
  */
 function handleSearchInput(event) {
 	customerSearch.value = event.target.value
+	searchCustomersOnline(customerSearch.value)
+}
+
+async function searchCustomersOnline(term) {
+	if (isOffline() || !props.posProfile) return
+
+	const query = String(term || "").trim()
+	if (query.length < 2) return
+
+	const requestId = ++customerSearchRequestId.value
+	try {
+		const response = await call("pos_next.api.customers.get_customers", {
+			pos_profile: props.posProfile,
+			search_term: query,
+			limit: 50,
+		})
+		const list = response?.message || response || []
+
+		if (requestId !== customerSearchRequestId.value || !Array.isArray(list)) {
+			return
+		}
+
+		if (list.length) {
+			const map = new Map(allCustomers.value.map((c) => [c.name, c]))
+			for (const customer of list) {
+				map.set(customer.name, customer)
+			}
+			allCustomers.value = Array.from(map.values())
+			await offlineWorker.cacheCustomers(list)
+		}
+	} catch (error) {
+		console.error("Error searching customers online:", error)
+	}
 }
 
 /**

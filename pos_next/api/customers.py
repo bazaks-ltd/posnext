@@ -37,12 +37,26 @@ def get_customers(search_term="", pos_profile=None, limit=20):
                 filters["customer_group"] = profile_doc.customer_group
                 frappe.logger().debug(f"Filtering by customer_group: {profile_doc.customer_group}")
 
-        # Return all customers (for client-side filtering)
+        search_term = (search_term or "").strip()
+
+        # Return all customers or filtered customers
         filters["disabled"] = 0
         customer_limit = limit if limit not in (None, 0) else frappe.db.count("Customer", filters)
+
+        or_filters = None
+        if search_term:
+            like_term = f"%{search_term}%"
+            or_filters = [
+                ["Customer", "customer_name", "like", like_term],
+                ["Customer", "mobile_no", "like", like_term],
+                ["Customer", "email_id", "like", like_term],
+                ["Customer", "name", "like", like_term],
+            ]
+
         result = frappe.get_all(
             "Customer",
             filters=filters,
+            or_filters=or_filters,
             fields=["name", "customer_name", "mobile_no", "email_id"],
             limit=customer_limit,
             order_by="customer_name asc",

@@ -9,6 +9,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 	const allCustomers = ref([])
 	const searchTerm = ref("")
 	const loading = ref(false)
+	const searchingOnline = ref(false)
 	const selectedIndex = ref(-1)
 	const recentSearches = ref([])
 	const frequentCustomers = ref([])
@@ -16,6 +17,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 	// Performance optimization: Pre-computed search indices
 	const searchIndex = ref(new Map())
 	const resultCache = ref(new Map())
+	const liveSearchRequestId = ref(0)
 
 	// Ultra-fast search helper - optimized for speed
 	function quickMatch(search, customer) {
@@ -220,14 +222,21 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 				console.log(
 					`✓ Loaded ${cachedCustomers.length} customers from cache`,
 				)
-			} else if (!isOffline()) {
-				// Fetch from server if cache is empty and online
-                                const response = await call("pos_next.api.customers.get_customers", {
-                                        pos_profile: posProfile,
-                                        search_term: "",
-                                        start: 0,
-                                        limit: 0,
-                                })
+			} else if (isOffline()) {
+				// Offline and cache is empty - show warning
+				console.warn("⚠️ Offline mode: No cached customers available. Please sync data when online.")
+				allCustomers.value = []
+			}
+
+			if (!isOffline()) {
+				// Always refresh from server when online so new customers
+				// created in another screen (e.g. Vet Procedure) appear immediately.
+				const response = await call("pos_next.api.customers.get_customers", {
+					pos_profile: posProfile,
+					search_term: "",
+					start: 0,
+					limit: 0,
+				})
 				const list = response?.message || response || []
 				allCustomers.value = list
 
@@ -236,10 +245,6 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 					await offlineWorker.cacheCustomers(list)
 				}
 				console.log(`✓ Loaded ${list.length} customers from server`)
-			} else {
-				// Offline and cache is empty - show warning
-				console.warn("⚠️ Offline mode: No cached customers available. Please sync data when online.")
-				allCustomers.value = []
 			}
 
 			// Clear caches when new data is loaded
@@ -250,6 +255,44 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 			allCustomers.value = []
 		} finally {
 			loading.value = false
+		}
+	}
+
+	async function searchCustomersOnline(posProfile, term, limit = 50) {
+		if (!posProfile || isOffline()) return
+
+		const searchTerm = String(term || "").trim()
+		if (searchTerm.length < 2) return
+
+		const requestId = ++liveSearchRequestId.value
+		searchingOnline.value = true
+		try {
+			const response = await call("pos_next.api.customers.get_customers", {
+				pos_profile: posProfile,
+				search_term: searchTerm,
+				limit,
+			})
+			const list = response?.message || response || []
+
+			if (requestId !== liveSearchRequestId.value) {
+				return
+			}
+
+			if (Array.isArray(list) && list.length) {
+				const map = new Map(allCustomers.value.map((c) => [c.name, c]))
+				for (const customer of list) {
+					map.set(customer.name, customer)
+				}
+				allCustomers.value = Array.from(map.values())
+				resultCache.value.clear()
+				await offlineWorker.cacheCustomers(list)
+			}
+		} catch (error) {
+			console.error("Error searching customers online:", error)
+		} finally {
+			if (requestId === liveSearchRequestId.value) {
+				searchingOnline.value = false
+			}
 		}
 	}
 
@@ -342,6 +385,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 		allCustomers,
 		searchTerm,
 		loading,
+		searchingOnline,
 		selectedIndex,
 		recentSearches,
 		frequentCustomers,
@@ -352,6 +396,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 
 		// Actions
 		loadAllCustomers,
+		searchCustomersOnline,
 		addCustomerToCache,
 		setSearchTerm,
 		clearSearch,

@@ -223,9 +223,7 @@ const showingRecent = computed(
 watch(show, (newVal) => {
 	if (newVal) {
 		customerStore.clearSearch()
-		if (allCustomers.value.length === 0) {
-			customerStore.loadAllCustomers(props.posProfile)
-		}
+		customerStore.loadAllCustomers(props.posProfile)
 	}
 })
 
@@ -234,6 +232,7 @@ function handleSearchInput(event) {
 	const value = event.target.value
 	console.log("🔍 Search input:", value) // Debug log
 	customerStore.setSearchTerm(value)
+	customerStore.searchCustomersOnline(props.posProfile, value)
 }
 
 // Keyboard navigation
