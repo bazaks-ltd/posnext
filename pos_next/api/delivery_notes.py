@@ -74,12 +74,14 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 
 		qty = flt(d.get("qty"))
 		# Keep DN pricing authoritative: use mapped SI qty/links, but preserve the
-		# original Delivery Note row rate/price list/discount values.
+		# final DN row rate as the POS unit price. POS cart recalculation displays
+		# `price_list_rate`, so for DN-billed rows we align it to final DN rate and
+		# clear discount fields to avoid double-discount in the cart.
 		if dn_row:
 			rate = flt(dn_row.get("rate") or 0)
-			plr = flt(dn_row.get("price_list_rate") or dn_row.get("rate") or 0)
-			discount_percentage = flt(dn_row.get("discount_percentage") or 0)
-			discount_amount = flt(dn_row.get("discount_amount") or 0)
+			plr = rate
+			discount_percentage = 0.0
+			discount_amount = 0.0
 		else:
 			rate = flt(d.get("rate") or 0)
 			plr = flt(d.get("price_list_rate") or d.get("rate") or 0)
