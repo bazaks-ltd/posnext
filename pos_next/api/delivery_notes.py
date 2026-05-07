@@ -44,6 +44,7 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 		frappe.throw(_("Delivery Note {0} not found").format(delivery_note))
 
 	dn = frappe.get_doc("Delivery Note", delivery_note)
+	dn_items_by_name = {row.name: row for row in dn.items}
 
 	if pos_profile:
 		pp_company = frappe.db.get_value("POS Profile", pos_profile, "company")
@@ -60,6 +61,7 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 	for row in si.items:
 		d = row.as_dict()
 		item_code = d.get("item_code")
+		dn_row = dn_items_by_name.get(d.get("dn_detail"))
 		item_meta = (
 			frappe.db.get_value(
 				"Item",
@@ -71,8 +73,18 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 		)
 
 		qty = flt(d.get("qty"))
-		plr = flt(d.get("price_list_rate") or d.get("rate") or 0)
-		rate = flt(d.get("rate") or 0)
+		# Keep DN pricing authoritative: use mapped SI qty/links, but preserve the
+		# original Delivery Note row rate/price list/discount values.
+		if dn_row:
+			rate = flt(dn_row.get("rate") or 0)
+			plr = flt(dn_row.get("price_list_rate") or dn_row.get("rate") or 0)
+			discount_percentage = flt(dn_row.get("discount_percentage") or 0)
+			discount_amount = flt(dn_row.get("discount_amount") or 0)
+		else:
+			rate = flt(d.get("rate") or 0)
+			plr = flt(d.get("price_list_rate") or d.get("rate") or 0)
+			discount_percentage = flt(d.get("discount_percentage") or 0)
+			discount_amount = flt(d.get("discount_amount") or 0)
 
 		out.append(
 			{
@@ -92,8 +104,8 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 				"delivery_note": d.get("delivery_note"),
 				"sales_order": d.get("sales_order"),
 				"so_detail": d.get("so_detail"),
-				"discount_percentage": flt(d.get("discount_percentage") or 0),
-				"discount_amount": flt(d.get("discount_amount") or 0),
+				"discount_percentage": discount_percentage,
+				"discount_amount": discount_amount,
 				"has_serial_no": cint(item_meta.get("has_serial_no") or 0),
 				"has_batch_no": cint(item_meta.get("has_batch_no") or 0),
 				"is_stock_item": 0 if item_meta.get("is_stock_item") == 0 else 1,
