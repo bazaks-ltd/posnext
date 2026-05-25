@@ -120,7 +120,8 @@ def get_pos_profile_data(pos_profile):
 		"customer": profile_doc.customer,
 		"write_off_account": profile_doc.write_off_account,
 		"write_off_cost_center": profile_doc.write_off_cost_center,
-		"print_format": profile_doc.get("print_format"),
+		"print_format": profile_doc.get("print_format") or profile_doc.get("custom_default_print_format"),
+		"letter_head": profile_doc.get("letter_head"),
 		"auto_print": profile_doc.get("print_receipt_on_order_complete", 0),
 		"country": profile_doc.get("country"),
 	}

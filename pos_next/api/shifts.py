@@ -8,6 +8,19 @@ import frappe
 from frappe import _
 from frappe.utils import nowdate, nowtime, get_datetime
 
+from pos_next.utils.letter_head import get_letter_head_for_print
+
+
+def _attach_letter_head_print(data):
+	"""Add rendered letter head HTML for offline receipt printing."""
+	profile = data.get("pos_profile")
+	company = data.get("company")
+	letter_head_name = None
+	if profile:
+		letter_head_name = profile.get("letter_head") if isinstance(profile, dict) else getattr(profile, "letter_head", None)
+	data["letter_head_print"] = get_letter_head_for_print(letter_head_name, doc=company)
+	return data
+
 
 @frappe.whitelist()
 def get_opening_dialog_data():
@@ -86,7 +99,7 @@ def check_opening_shift(user=None):
 	data["pos_profile"] = frappe.get_doc("POS Profile", shift_data["pos_profile"])
 	data["company"] = frappe.get_doc("Company", data["pos_profile"].company)
 
-	return data
+	return _attach_letter_head_print(data)
 
 
 @frappe.whitelist()
@@ -129,7 +142,7 @@ def create_opening_shift(pos_profile, company, balance_details):
 	data["pos_profile"] = frappe.get_doc("POS Profile", pos_profile)
 	data["company"] = frappe.get_doc("Company", company)
 
-	return data
+	return _attach_letter_head_print(data)
 
 
 @frappe.whitelist()
