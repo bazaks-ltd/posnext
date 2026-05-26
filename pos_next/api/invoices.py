@@ -425,6 +425,8 @@ def update_invoice(data):
                 invoice_doc.branch = pos_profile_doc.branch
                 # Also set branch on all items for GL entries
                 for item in invoice_doc.get("items", []):
+                    if item.get("delivery_note") or item.get("dn_detail"):
+                        continue
                     item.branch = pos_profile_doc.branch
 
         company = invoice_doc.get("company") or (
@@ -687,10 +689,16 @@ def submit_invoice(invoice=None, data=None):
                     invoice_doc.branch = pos_profile_doc.branch
                     # Also set branch on all items for GL entries
                     for item in invoice_doc.get("items", []):
-                        if not item.get("branch"):
-                            item.branch = pos_profile_doc.branch
+                        if item.get("branch") or item.get("delivery_note") or item.get("dn_detail"):
+                            continue
+                        item.branch = pos_profile_doc.branch
             except Exception:
                 pass  # Branch is optional, continue without it
+
+        # Restore Delivery Note cost centers after POS Profile defaults are applied
+        if hasattr(invoice_doc, "_restore_delivery_note_cost_centers"):
+            preserved_header, preserved_items = invoice_doc._preserve_delivery_note_cost_centers()
+            invoice_doc._restore_delivery_note_cost_centers(preserved_header, preserved_items)
 
         # Set accounts for all payment methods before saving
         for payment in invoice_doc.payments:

@@ -283,6 +283,7 @@ export function useInvoice() {
 				delivery_note: item.delivery_note,
 				sales_order: item.sales_order,
 				so_detail: item.so_detail,
+				cost_center: item.cost_center,
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes
@@ -753,6 +754,9 @@ export function useInvoice() {
 				if (item.so_detail) {
 					itemData.so_detail = item.so_detail
 				}
+				if (item.cost_center) {
+					itemData.cost_center = item.cost_center
+				}
 
 				return itemData
 			}),
@@ -841,6 +845,9 @@ export function useInvoice() {
 					}
 					if (item.so_detail) {
 						itemData.so_detail = item.so_detail
+					}
+					if (item.cost_center) {
+						itemData.cost_center = item.cost_center
 					}
 
 					return itemData

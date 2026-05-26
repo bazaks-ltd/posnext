@@ -106,6 +106,7 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 				"delivery_note": d.get("delivery_note"),
 				"sales_order": d.get("sales_order"),
 				"so_detail": d.get("so_detail"),
+				"cost_center": d.get("cost_center"),
 				"discount_percentage": discount_percentage,
 				"discount_amount": discount_amount,
 				"has_serial_no": cint(item_meta.get("has_serial_no") or 0),
@@ -115,4 +116,4 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 			}
 		)
 
-	return {"items": out, "delivery_note": delivery_note, "customer": dn.customer}
+	return {"items": out, "delivery_note": delivery_note, "customer": dn.customer, "cost_center": dn.cost_center}
