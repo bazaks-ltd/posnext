@@ -22,6 +22,7 @@ class DailySalesByCostCenter:
 
 		self.company = self.filters.company
 		self.currency = frappe.get_cached_value("Company", self.company, "default_currency")
+		self.currency_precision = frappe.get_cached_value("Currency", self.currency, "fraction") or 2
 		self.daily_periods = []
 		self.columns = []
 		self.data = []
@@ -101,18 +102,23 @@ class DailySalesByCostCenter:
 			as_dict=True,
 		)
 
+	def _cost_center_share_sql(self, amount_expr):
+		"""Allocate an invoice-level amount to item lines by net amount share."""
+		return f"""
+			CASE
+				WHEN IFNULL(si.base_net_total, 0) = 0 THEN 0
+				ELSE (sii.base_net_amount / si.base_net_total) * ({amount_expr})
+			END
+		"""
+
 	def _get_tax_by_cost_center(self):
+		tax_expr = self._cost_center_share_sql("si.base_grand_total - si.base_net_total")
 		return frappe.db.sql(
 			f"""
 			SELECT
 				COALESCE(NULLIF(sii.cost_center, ''), NULLIF(si.cost_center, ''), %(not_set)s) AS entity,
 				si.posting_date,
-				SUM(
-					CASE
-						WHEN IFNULL(si.base_net_total, 0) = 0 THEN 0
-						ELSE (sii.base_net_amount / si.base_net_total) * si.base_total_taxes_and_charges
-					END
-				) AS amount
+				SUM({tax_expr}) AS amount
 			FROM `tabSales Invoice` si
 			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
 			WHERE {self._invoice_conditions()}
@@ -124,17 +130,13 @@ class DailySalesByCostCenter:
 		)
 
 	def _get_total_sales_by_cost_center(self):
+		total_expr = self._cost_center_share_sql("si.base_grand_total")
 		return frappe.db.sql(
 			f"""
 			SELECT
 				COALESCE(NULLIF(sii.cost_center, ''), NULLIF(si.cost_center, ''), %(not_set)s) AS entity,
 				si.posting_date,
-				SUM(
-					sii.base_net_amount + CASE
-						WHEN IFNULL(si.base_net_total, 0) = 0 THEN 0
-						ELSE (sii.base_net_amount / si.base_net_total) * si.base_total_taxes_and_charges
-					END
-				) AS amount
+				SUM({total_expr}) AS amount
 			FROM `tabSales Invoice` si
 			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
 			WHERE {self._invoice_conditions()}
@@ -202,17 +204,17 @@ class DailySalesByCostCenter:
 		for entry in entries:
 			entity = entry.entity or _("Not Set")
 			entities.add(entity)
-			matrix[entity][getdate(entry.posting_date)] += flt(entry.amount)
+			matrix[entity][getdate(entry.posting_date)] += flt(entry.amount, self.currency_precision)
 
 		rows = []
 		for entity in sorted(entities, key=lambda value: (value or "").lower()):
 			row = {"entity": entity}
 			total = 0
 			for _label, fieldname, day in self.daily_periods:
-				value = flt(matrix[entity].get(day, 0))
+				value = flt(matrix[entity].get(day, 0), self.currency_precision)
 				row[fieldname] = value
 				total += value
-			row["total"] = total
+			row["total"] = flt(total, self.currency_precision)
 			if total:
 				rows.append(row)
 		return rows
@@ -220,8 +222,14 @@ class DailySalesByCostCenter:
 	def _total_row(self, section_rows):
 		row = {"entity": _("Total"), "bold": 1}
 		for _label, fieldname, _day in self.daily_periods:
-			row[fieldname] = sum(flt(section_row.get(fieldname, 0)) for section_row in section_rows)
-		row["total"] = sum(flt(section_row.get("total", 0)) for section_row in section_rows)
+			row[fieldname] = flt(
+				sum(flt(section_row.get(fieldname, 0), self.currency_precision) for section_row in section_rows),
+				self.currency_precision,
+			)
+		row["total"] = flt(
+			sum(flt(section_row.get("total", 0), self.currency_precision) for section_row in section_rows),
+			self.currency_precision,
+		)
 		return row
 
 	def _build_chart(self):
