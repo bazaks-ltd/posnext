@@ -123,6 +123,28 @@ class DailySalesByCostCenter:
 			as_dict=True,
 		)
 
+	def _get_total_sales_by_cost_center(self):
+		return frappe.db.sql(
+			f"""
+			SELECT
+				COALESCE(NULLIF(sii.cost_center, ''), NULLIF(si.cost_center, ''), %(not_set)s) AS entity,
+				si.posting_date,
+				SUM(
+					sii.base_net_amount + CASE
+						WHEN IFNULL(si.base_net_total, 0) = 0 THEN 0
+						ELSE (sii.base_net_amount / si.base_net_total) * si.base_total_taxes_and_charges
+					END
+				) AS amount
+			FROM `tabSales Invoice` si
+			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+			WHERE {self._invoice_conditions()}
+			GROUP BY entity, si.posting_date
+			ORDER BY entity, si.posting_date
+			""",
+			self._query_params(),
+			as_dict=True,
+		)
+
 	def _get_payments_by_mode(self):
 		return frappe.db.sql(
 			f"""
@@ -151,8 +173,13 @@ class DailySalesByCostCenter:
 
 	def _build_data(self):
 		self.data = []
-		self._append_section(_("Net Sales by Cost Center"), self._get_sales_by_cost_center(), store_chart_rows=True)
+		self._append_section(_("Net Sales by Cost Center"), self._get_sales_by_cost_center())
 		self._append_section(_("Tax by Cost Center"), self._get_tax_by_cost_center())
+		self._append_section(
+			_("Total Sales by Cost Center (Incl. Tax)"),
+			self._get_total_sales_by_cost_center(),
+			store_chart_rows=True,
+		)
 		self._append_section(_("Payments by Mode of Payment"), self._get_payments_by_mode())
 
 	def _append_section(self, title, entries, store_chart_rows=False):
