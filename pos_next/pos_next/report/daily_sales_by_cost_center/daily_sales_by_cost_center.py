@@ -89,11 +89,20 @@ class DailySalesByCostCenter:
 		return frappe.db.sql(
 			f"""
 			SELECT
-				COALESCE(NULLIF(sii.cost_center, ''), NULLIF(si.cost_center, ''), %(not_set)s) AS entity,
+				COALESCE(
+					NULLIF(igd.selling_cost_center, ''),
+					NULLIF(sii.cost_center, ''),
+					NULLIF(si.cost_center, ''),
+					%(not_set)s
+				) AS entity,
 				si.posting_date,
 				SUM(sii.base_net_amount) AS amount
 			FROM `tabSales Invoice` si
 			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+			LEFT JOIN `tabItem Default` igd
+				ON igd.parent = sii.item_group
+				AND igd.parenttype = 'Item Group'
+				AND igd.company = si.company
 			WHERE {self._invoice_conditions()}
 			GROUP BY entity, si.posting_date
 			ORDER BY entity, si.posting_date
@@ -112,16 +121,36 @@ class DailySalesByCostCenter:
 		"""
 
 	def _get_tax_by_cost_center(self):
-		tax_expr = self._cost_center_share_sql("si.base_grand_total - si.base_net_total")
+		tax_expr = self._cost_center_share_sql("stc.base_tax_amount_after_discount_amount")
 		return frappe.db.sql(
 			f"""
 			SELECT
-				COALESCE(NULLIF(sii.cost_center, ''), NULLIF(si.cost_center, ''), %(not_set)s) AS entity,
+				COALESCE(
+					NULLIF(igd.selling_cost_center, ''),
+					NULLIF(sii.cost_center, ''),
+					NULLIF(si.cost_center, ''),
+					%(not_set)s
+				) AS entity,
 				si.posting_date,
 				SUM({tax_expr}) AS amount
 			FROM `tabSales Invoice` si
 			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+			LEFT JOIN `tabItem Default` igd
+				ON igd.parent = sii.item_group
+				AND igd.parenttype = 'Item Group'
+				AND igd.company = si.company
+			INNER JOIN `tabSales Taxes and Charges` stc
+				ON stc.parent = si.name
+				AND stc.parenttype = 'Sales Invoice'
+				AND stc.docstatus = 1
+			INNER JOIN `tabAccount` acc ON acc.name = stc.account_head
 			WHERE {self._invoice_conditions()}
+				AND acc.account_type = 'Tax'
+				AND stc.account_head NOT IN (
+					SELECT DISTINCT sii2.income_account
+					FROM `tabSales Invoice Item` sii2
+					WHERE sii2.parent = si.name AND IFNULL(sii2.income_account, '') != ''
+				)
 			GROUP BY entity, si.posting_date
 			ORDER BY entity, si.posting_date
 			""",
@@ -129,23 +158,21 @@ class DailySalesByCostCenter:
 			as_dict=True,
 		)
 
-	def _get_total_sales_by_cost_center(self):
-		total_expr = self._cost_center_share_sql("si.base_grand_total")
-		return frappe.db.sql(
-			f"""
-			SELECT
-				COALESCE(NULLIF(sii.cost_center, ''), NULLIF(si.cost_center, ''), %(not_set)s) AS entity,
-				si.posting_date,
-				SUM({total_expr}) AS amount
-			FROM `tabSales Invoice` si
-			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
-			WHERE {self._invoice_conditions()}
-			GROUP BY entity, si.posting_date
-			ORDER BY entity, si.posting_date
-			""",
-			self._query_params(),
-			as_dict=True,
-		)
+	def _get_total_sales_by_cost_center(self, net_entries, tax_entries):
+		combined = defaultdict(float)
+
+		for entry in net_entries:
+			combined[(entry.entity, getdate(entry.posting_date))] += flt(entry.amount)
+
+		for entry in tax_entries:
+			combined[(entry.entity, getdate(entry.posting_date))] += flt(entry.amount)
+
+		return [
+			frappe._dict({"entity": entity, "posting_date": posting_date, "amount": amount})
+			for (entity, posting_date), amount in sorted(
+				combined.items(), key=lambda row: ((row[0][0] or "").lower(), row[0][1])
+			)
+		]
 
 	def _get_payments_by_mode(self):
 		return frappe.db.sql(
@@ -175,11 +202,13 @@ class DailySalesByCostCenter:
 
 	def _build_data(self):
 		self.data = []
-		self._append_section(_("Net Sales by Cost Center"), self._get_sales_by_cost_center())
-		self._append_section(_("Tax by Cost Center"), self._get_tax_by_cost_center())
+		net_entries = self._get_sales_by_cost_center()
+		tax_entries = self._get_tax_by_cost_center()
+		self._append_section(_("Net Sales by Cost Center"), net_entries)
+		self._append_section(_("Tax by Cost Center"), tax_entries)
 		self._append_section(
 			_("Total Sales by Cost Center (Incl. Tax)"),
-			self._get_total_sales_by_cost_center(),
+			self._get_total_sales_by_cost_center(net_entries, tax_entries),
 			store_chart_rows=True,
 		)
 		self._append_section(_("Payments by Mode of Payment"), self._get_payments_by_mode())
