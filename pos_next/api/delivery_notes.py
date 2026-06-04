@@ -5,6 +5,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt
 
+from pos_next.cost_center import get_dn_line_cost_center
+
 
 @frappe.whitelist()
 def list_delivery_notes_for_billing(customer, company, txt=None, limit=50):
@@ -88,6 +90,12 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 			discount_percentage = flt(d.get("discount_percentage") or 0)
 			discount_amount = flt(d.get("discount_amount") or 0)
 
+		dn_row_cc = None
+		if dn_row:
+			dn_row_cc = dn_row.get("cost_center")
+		if not dn_row_cc:
+			dn_row_cc = d.get("cost_center")
+
 		out.append(
 			{
 				"item_code": item_code,
@@ -106,7 +114,9 @@ def get_cart_items_from_delivery_note(delivery_note, pos_profile=None):
 				"delivery_note": d.get("delivery_note"),
 				"sales_order": d.get("sales_order"),
 				"so_detail": d.get("so_detail"),
-				"cost_center": d.get("cost_center"),
+				"cost_center": get_dn_line_cost_center(
+					item_code, dn.company, dn_row_cc, dn.cost_center
+				),
 				"discount_percentage": discount_percentage,
 				"discount_amount": discount_amount,
 				"has_serial_no": cint(item_meta.get("has_serial_no") or 0),

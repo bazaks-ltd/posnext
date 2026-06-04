@@ -388,6 +388,13 @@ export function useInvoice() {
 		}
 	}
 
+	function updateItemCostCenter(lineRef, costCenter) {
+		const item = findLineItem(lineRef)
+		if (item) {
+			item.cost_center = costCenter || null
+		}
+	}
+
 	function updateItemDiscount(lineRef, discountPercentage) {
 		const item = findLineItem(lineRef)
 		if (item) {
@@ -754,9 +761,8 @@ export function useInvoice() {
 				if (item.so_detail) {
 					itemData.so_detail = item.so_detail
 				}
-				if (item.cost_center) {
-					itemData.cost_center = item.cost_center
-				}
+				// Always send so cart cost center edits (including DN lines) persist on the invoice
+				itemData.cost_center = item.cost_center || null
 
 				return itemData
 			}),
@@ -846,9 +852,8 @@ export function useInvoice() {
 					if (item.so_detail) {
 						itemData.so_detail = item.so_detail
 					}
-					if (item.cost_center) {
-						itemData.cost_center = item.cost_center
-					}
+					// Always send so cart cost center edits (including DN lines) persist on the invoice
+					itemData.cost_center = item.cost_center || null
 
 					return itemData
 				}),
@@ -1117,6 +1122,7 @@ export function useInvoice() {
 		removeItem,
 		updateItemQuantity,
 		updateItemRate,
+		updateItemCostCenter,
 		updateItemDiscount,
 		calculateDiscountAmount,
 		applyDiscount,

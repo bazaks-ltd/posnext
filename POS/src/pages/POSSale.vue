@@ -222,7 +222,9 @@
 						:applied-offers="cartStore.appliedOffers"
 						:warehouses="profileWarehouses"
 						:loaded-delivery-notes="loadedDeliveryNotes"
+						:allow-edit-item-cost-center="shiftStore.allowEditItemCostCenter"
 						@update-quantity="cartStore.updateItemQuantity"
+						@update-cost-center="cartStore.updateItemCostCenter"
 						@remove-item="cartStore.removeItem"
 						@select-customer="handleCustomerSelected"
 						@show-customer-search="uiStore.showCustomerDialog = true"
@@ -452,6 +454,15 @@
 			mode="search"
 			:pos-profile="shiftStore.profileName"
 			:company="shiftStore.profileCompany"
+		/>
+
+		<!-- Reports -->
+		<ReportsDialog
+			v-model="showReportsDialog"
+			:company="shiftStore.profileCompany"
+			:pos-profile="shiftStore.profileName"
+			:opening-shift="shiftStore.currentShift?.name"
+			:currency="shiftStore.profileCurrency"
 		/>
 
 		<!-- Invoice Management -->
@@ -800,6 +811,7 @@ import InvoiceShareDialog from "@/components/sale/InvoiceShareDialog.vue"
 import POSSettings from "@/components/settings/POSSettings.vue"
 import InvoiceManagement from "@/components/invoices/InvoiceManagement.vue"
 import InvoiceDetailDialog from "@/components/invoices/InvoiceDetailDialog.vue"
+import ReportsDialog from "@/components/reports/ReportsDialog.vue"
 import { useRealtimeStock } from "@/composables/useRealtimeStock"
 import { usePOSEvents } from "@/composables/usePOSEvents"
 import { useLocale } from "@/composables/useLocale"
@@ -909,6 +921,9 @@ const showPOSSettings = ref(false)
 
 // Stock Lookup dialog (Products menu)
 const showStockLookup = ref(false)
+
+// Reports dialog
+const showReportsDialog = ref(false)
 
 // Invoice Management dialog
 const showInvoiceManagement = ref(false)
@@ -1461,11 +1476,11 @@ function handleShiftClosed() {
 	}
 }
 
-function handleItemSelected(item, autoAdd = false) {
+async function handleItemSelected(item, autoAdd = false) {
 	// Auto-add mode
 	if (autoAdd) {
 		try {
-			cartStore.addItem(item, 1, true, shiftStore.currentProfile)
+			await cartStore.addItem(item, 1, true, shiftStore.currentProfile)
 		} catch (error) {
 			uiStore.showError(
 				__("Insufficient Stock"),
@@ -1513,7 +1528,7 @@ function handleItemSelected(item, autoAdd = false) {
 
 	// Add to cart
 	try {
-		cartStore.addItem(item, 1, false, shiftStore.currentProfile)
+		await cartStore.addItem(item, 1, false, shiftStore.currentProfile)
 	} catch (error) {
 		uiStore.showError(
 			__("Insufficient Stock"),
@@ -1788,7 +1803,7 @@ async function handleOptionSelected(option) {
 				uiStore.showBatchSerialDialog = true
 			} else {
 				try {
-					cartStore.addItem(variant, cartStore.pendingItemQty, false, shiftStore.currentProfile)
+					await cartStore.addItem(variant, cartStore.pendingItemQty, false, shiftStore.currentProfile)
 					uiStore.showItemSelectionDialog = false
 					cartStore.clearPendingItem()
 					showSuccess(__('{0} added to cart', [variant.item_name]))
@@ -1815,6 +1830,9 @@ async function handleOptionSelected(option) {
 			if (itemDetails.pos_item_tax_rate !== undefined) {
 				itemToAdd.pos_item_tax_rate = itemDetails.pos_item_tax_rate
 			}
+			if (itemDetails.cost_center) {
+				itemToAdd.cost_center = itemDetails.cost_center
+			}
 
 			if (itemToAdd.has_batch_no || itemToAdd.has_serial_no) {
 				cartStore.setPendingItem(itemToAdd, cartStore.pendingItemQty)
@@ -1822,7 +1840,7 @@ async function handleOptionSelected(option) {
 				uiStore.showBatchSerialDialog = true
 			} else {
 				try {
-					cartStore.addItem(itemToAdd, cartStore.pendingItemQty, false, shiftStore.currentProfile)
+					await cartStore.addItem(itemToAdd, cartStore.pendingItemQty, false, shiftStore.currentProfile)
 					uiStore.showItemSelectionDialog = false
 					cartStore.clearPendingItem()
 					showSuccess(__('{0} ({1}) added to cart', [itemToAdd.item_name, option.uom]))
@@ -2021,7 +2039,7 @@ function handleDiscountRemoved() {
 	cartStore.removeDiscountFromCart()
 }
 
-function handleDeliveryNoteItems({ items, delivery_note }) {
+async function handleDeliveryNoteItems({ items, delivery_note }) {
 	if (!Array.isArray(items) || items.length === 0) return
 
 	if (delivery_note && loadedDeliveryNotes.value.includes(delivery_note)) {
@@ -2033,7 +2051,7 @@ function handleDeliveryNoteItems({ items, delivery_note }) {
 	for (const line of items) {
 		const qty = Number.parseFloat(line.quantity) || 1
 		try {
-			cartStore.addItem(line, qty, false, shiftStore.currentProfile)
+			await cartStore.addItem(line, qty, false, shiftStore.currentProfile)
 			added++
 		} catch (e) {
 			showWarning(
@@ -2102,6 +2120,9 @@ async function handleBatchSerialSelected(batchSerial) {
 				if (itemDetails) {
 					itemToAdd.rate = itemDetails.price_list_rate ?? itemDetails.rate ?? itemToAdd.rate
 					itemToAdd.price_list_rate = itemDetails.price_list_rate ?? itemDetails.rate ?? itemToAdd.price_list_rate
+					if (itemDetails.cost_center) {
+						itemToAdd.cost_center = itemDetails.cost_center
+					}
 					if (itemDetails.batch_price_missing) {
 						showWarning(__('No Item Price found for this batch. Please add an Item Price for batch {0}.', [firstBatchNo]))
 					}
@@ -2111,7 +2132,7 @@ async function handleBatchSerialSelected(batchSerial) {
 			}
 		}
 
-		cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile)
+		await cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile)
 		cartStore.clearPendingItem()
 	} catch (error) {
 		showError(error.message)
@@ -2265,7 +2286,7 @@ async function handleEditOfflineInvoice(invoice) {
 			for (const item of invoiceData.items) {
 				// Use autoAdd=true to skip stock validation when loading saved invoices
 				// Check both quantity and qty fields since items are stored with 'quantity'
-				cartStore.addItem(item, item.quantity || item.qty || 1, true, shiftStore.currentProfile)
+				await cartStore.addItem(item, item.quantity || item.qty || 1, true, shiftStore.currentProfile)
 			}
 		}
 
@@ -2464,6 +2485,8 @@ function handleManagementMenuClick(menuItem) {
 	} else if (menuItem === "products") {
 		// Open Stock Lookup dialog in search mode
 		showStockLookup.value = true
+	} else if (menuItem === "reports") {
+		showReportsDialog.value = true
 	}
 }
 

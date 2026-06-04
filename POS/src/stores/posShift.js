@@ -22,6 +22,9 @@ export const usePOSShiftStore = defineStore("posShift", () => {
 	const autoPrintEnabled = computed(
 		() => currentProfile.value?.print_receipt_on_order_complete,
 	)
+	const allowEditItemCostCenter = computed(() =>
+		Boolean(currentProfile.value?.custom_allow_edit_item_cost_center),
+	)
 
 	// Actions
 	function updateShiftDuration() {
@@ -80,6 +83,7 @@ export const usePOSShiftStore = defineStore("posShift", () => {
 		profileCompany,
 		profileCustomer,
 		autoPrintEnabled,
+		allowEditItemCostCenter,
 
 		// Actions
 		updateShiftDuration,

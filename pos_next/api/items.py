@@ -14,6 +14,8 @@ from erpnext.stock.get_item_details import (
 from frappe import _, as_json
 from frappe.utils import flt, nowdate
 
+from pos_next.cost_center import bulk_pos_line_cost_centers, get_pos_line_cost_center
+
 ITEM_RESULT_FIELDS = [
 	"name as item_code",
 	"item_name",
@@ -382,6 +384,10 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 		res["pos_item_tax_rate"] = flt(_tax_rates.get(item_code, 0))
 	else:
 		res["pos_item_tax_rate"] = 0.0
+
+	pos_profile = item.get("pos_profile")
+	if company:
+		res["cost_center"] = get_pos_line_cost_center(item_code, company, pos_profile)
 
 	return res
 
@@ -1237,6 +1243,9 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 		item_pos_tax_rate_map = _bulk_pos_item_tax_rate_percent(
 			item_codes, pos_profile_doc.company
 		)
+		cost_center_map = bulk_pos_line_cost_centers(
+			item_codes, pos_profile_doc.company, pos_profile
+		)
 
 		# Enrich items with price, stock, barcode, and UOM data
 		for item in items:
@@ -1375,6 +1384,9 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 
 			# VAT from Item Tax Template (when master Sales template rate is 0)
 			item["pos_item_tax_rate"] = flt(item_pos_tax_rate_map.get(item["item_code"], 0))
+
+			# Default cost center: POS Profile, overridden by Item Group
+			item["cost_center"] = cost_center_map.get(item["item_code"])
 
 		return items
 	except Exception as e:

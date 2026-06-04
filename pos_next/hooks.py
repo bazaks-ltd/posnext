@@ -110,7 +110,8 @@ fixtures = [
 				"POS Profile-custom_email_template",
 				"POS Profile-custom_enable_whatsapp_web",
 				"POS Profile-custom_whatsapp_web_preference",
-					"POS Profile-custom_default_print_format"
+					"POS Profile-custom_default_print_format",
+					"POS Profile-custom_allow_edit_item_cost_center",
 				]
 			]
 		]

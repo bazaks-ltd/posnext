@@ -695,10 +695,18 @@ def submit_invoice(invoice=None, data=None):
             except Exception:
                 pass  # Branch is optional, continue without it
 
-        # Restore Delivery Note cost centers after POS Profile defaults are applied
-        if hasattr(invoice_doc, "_restore_delivery_note_cost_centers"):
+        # Cost centers: honour cart edits when enabled; otherwise apply POS/DN/Item Group rules
+        allows_cc_edit = (
+            hasattr(invoice_doc, "_pos_allows_cost_center_edit")
+            and invoice_doc._pos_allows_cost_center_edit()
+        )
+        if allows_cc_edit and hasattr(invoice_doc, "_apply_cart_cost_centers_from_payload"):
+            invoice_doc._apply_cart_cost_centers_from_payload(invoice.get("items"))
+        elif hasattr(invoice_doc, "_restore_delivery_note_cost_centers"):
             preserved_header, preserved_items = invoice_doc._preserve_delivery_note_cost_centers()
             invoice_doc._restore_delivery_note_cost_centers(preserved_header, preserved_items)
+            if hasattr(invoice_doc, "_apply_resolved_cost_centers"):
+                invoice_doc._apply_resolved_cost_centers()
 
         # Set accounts for all payment methods before saving
         for payment in invoice_doc.payments:

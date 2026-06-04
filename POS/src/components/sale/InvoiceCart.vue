@@ -497,9 +497,9 @@
 								</button>
 							</div>
 
-							<!-- Single Row: Quantity Counter, UOM, Price & Total -->
+							<!-- Single Row: Quantity, UOM, Price, Cost Center & Total -->
 							<div class="flex items-center justify-between gap-1.5">
-								<div class="flex items-center gap-1.5" @click.stop>
+								<div class="flex items-center gap-1.5 min-w-0 flex-1" @click.stop>
 									<!-- Quantity Counter -->
 									<!-- For serial items, show serial badge with edit button -->
 									<div v-if="item.has_serial_no && item.serial_no"
@@ -674,10 +674,39 @@
 										</template>
 									</div>
 
-									<!-- Price -->
-									<span class="text-[10px] sm:text-xs font-bold text-gray-700">
+									<!-- Price (standard qty row) -->
+									<span
+										v-if="!(item.has_serial_no && item.serial_no) && !(item.has_batch_no && item.serial_and_batch_bundle)"
+										class="text-[10px] sm:text-xs font-bold text-gray-700 flex-shrink-0"
+									>
 										{{ formatCurrency(item.rate) }}
 									</span>
+								</div>
+
+								<!-- Cost Center (between controls and line total) -->
+								<div
+									v-if="allowEditItemCostCenter"
+									class="flex items-center min-w-0 flex-shrink max-w-[11rem] sm:max-w-[15rem] mx-0.5"
+									@click.stop
+								>
+									<select
+										:id="`cost-center-${cartLineRef(item)}`"
+										:value="item.cost_center || ''"
+										@change="onCostCenterChange(item, $event.target.value)"
+										class="cart-cost-center-select w-full min-w-0 h-8 sm:h-9 text-xs sm:text-sm font-bold border border-gray-300 rounded-lg ps-2.5 pe-2 bg-white text-gray-900 truncate focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+										:title="item.cost_center || __('Cost Center')"
+										:aria-label="__('Cost center for {0}', [item.item_name])"
+									>
+										<option value="" class="font-bold">{{ __('Not Set') }}</option>
+										<option
+											v-for="cc in costCenterOptionsForItem(item)"
+											:key="cc.name"
+											:value="cc.name"
+											class="font-bold"
+										>
+											{{ cc.name }}
+										</option>
+									</select>
 								</div>
 
 								<!-- Item Total -->
@@ -879,6 +908,10 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	allowEditItemCostCenter: {
+		type: Boolean,
+		default: false,
+	},
 })
 
 /**
@@ -900,6 +933,7 @@ const emit = defineEmits([
 	"show-offers",        // () - Show available offers dialog
 	"remove-offer",       // (offerId) - Remove applied offer
 	"update-uom",         // (lineIdOrCode, newUom) - Change item's unit of measure
+	"update-cost-center", // (lineIdOrCode, costCenter) - Change item cost center
 	"edit-item",          // (item) - Open item edit dialog
 	"view-shift",         // () - View current shift details
 	"show-drafts",        // () - Show draft/held orders
@@ -915,6 +949,52 @@ const emit = defineEmits([
  * REACTIVE STATE
  * ============================================================================
  */
+// Cost center options for cart lines
+const costCenterOptions = ref([])
+const costCentersLoaded = ref(false)
+
+async function loadCostCenterOptions() {
+	if (!props.allowEditItemCostCenter || !props.company || isOffline()) {
+		costCenterOptions.value = []
+		costCentersLoaded.value = false
+		return
+	}
+
+	try {
+		const rows = await call("pos_next.cost_center.get_cost_centers", {
+			company: props.company,
+		})
+		costCenterOptions.value = rows || []
+		costCentersLoaded.value = true
+	} catch (error) {
+		console.error("Failed to load cost centers:", error)
+		costCenterOptions.value = []
+		costCentersLoaded.value = false
+	}
+}
+
+function costCenterOptionsForItem(item) {
+	const options = costCenterOptions.value || []
+	const current = item?.cost_center
+	if (current && !options.some((row) => row.name === current)) {
+		return [{ name: current }, ...options]
+	}
+	return options
+}
+
+function onCostCenterChange(item, costCenter) {
+	emit("update-cost-center", cartLineRef(item), costCenter || null)
+}
+
+watch(
+	() => [props.allowEditItemCostCenter, props.company],
+	() => {
+		costCentersLoaded.value = false
+		loadCostCenterOptions()
+	},
+	{ immediate: true },
+)
+
 // Customer search state
 const customerSearch = ref("")              // Current search query
 const customerSearchContainer = ref(null)   // Ref to search container for click-outside detection
@@ -1591,3 +1671,9 @@ onBeforeUnmount(() => {
 	document.removeEventListener("click", handleOutsideClick)
 })
 </script>
+
+<style scoped>
+.cart-cost-center-select {
+	font-weight: 700;
+}
+</style>

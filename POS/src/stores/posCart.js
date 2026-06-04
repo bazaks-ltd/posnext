@@ -1,6 +1,7 @@
 import { useInvoice } from "@/composables/useInvoice"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { call } from "@/utils/apiWrapper"
 import { parseError } from "@/utils/errorHandler"
 import {
 	checkStockAvailability,
@@ -28,6 +29,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		addItem: addItemToInvoice,
 		removeItem,
 		updateItemQuantity,
+		updateItemCostCenter,
 		submitInvoice,
 		clearCart: clearInvoiceCart,
 		loadTaxRules,
@@ -60,8 +62,33 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const isEmpty = computed(() => invoiceItems.value.length === 0)
 	const hasCustomer = computed(() => !!customer.value)
 
+	async function resolveLineCostCenter(item, currentProfile) {
+		if (item?.cost_center || !item?.item_code || !currentProfile) {
+			return item
+		}
+
+		const posProfileName =
+			typeof currentProfile === "string" ? currentProfile : currentProfile?.name
+		if (!posProfileName) {
+			return item
+		}
+
+		try {
+			const costCenter = await call("pos_next.cost_center.get_line_cost_center", {
+				item_code: item.item_code,
+				pos_profile: posProfileName,
+			})
+			if (costCenter) {
+				return { ...item, cost_center: costCenter }
+			}
+		} catch (error) {
+			console.error("Failed to resolve line cost center:", error)
+		}
+		return item
+	}
+
 	// Actions
-	function addItem(item, qty = 1, autoAdd = false, currentProfile = null) {
+	async function addItem(item, qty = 1, autoAdd = false, currentProfile = null) {
 		// Check stock availability before adding to cart
 		// Skip validation for batch/serial items - they have their own validation in the dialog
 		// Only stock items and product bundles: service items still get actual_qty: 0 from the
@@ -97,7 +124,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		}
 
 		// Add item to cart - no toast notification for performance
-		addItemToInvoice(item, qty)
+		const itemToAdd = await resolveLineCostCenter(item, currentProfile)
+		addItemToInvoice(itemToAdd, qty)
 	}
 
 	function clearCart() {
@@ -827,6 +855,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		addItem,
 		removeItem,
 		updateItemQuantity,
+		updateItemCostCenter,
 		clearCart,
 		setCustomer,
 		removeDeliveryNoteItems,
