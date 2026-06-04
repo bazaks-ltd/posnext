@@ -675,12 +675,29 @@
 									</div>
 
 									<!-- Price (standard qty row) -->
-									<span
+									<div
 										v-if="!(item.has_serial_no && item.serial_no) && !(item.has_batch_no && item.serial_and_batch_bundle)"
-										class="text-[10px] sm:text-xs font-bold text-gray-700 flex-shrink-0"
+										class="flex-shrink-0"
+										@click.stop
 									>
-										{{ formatCurrency(item.rate) }}
-									</span>
+										<input
+											v-if="allowRateChange"
+											type="number"
+											min="0"
+											step="0.01"
+											:value="item.rate"
+											@change="onRateChange(item, $event.target.value)"
+											@blur="onRateChange(item, $event.target.value)"
+											class="cart-rate-input w-[4.5rem] sm:w-20 h-7 sm:h-8 text-[10px] sm:text-xs font-bold text-gray-900 border border-gray-300 rounded-lg px-1.5 text-end focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+											:aria-label="__('Rate for {0}', [item.item_name])"
+										/>
+										<span
+											v-else
+											class="text-[10px] sm:text-xs font-bold text-gray-700"
+										>
+											{{ formatCurrency(item.rate) }}
+										</span>
+									</div>
 								</div>
 
 								<!-- Cost Center (between controls and line total) -->
@@ -813,6 +830,7 @@
 			:item="selectedItem"
 			:warehouses="warehouses"
 			:currency="currency"
+			:allow-rate-change="allowRateChange"
 			@update-item="handleUpdateItem"
 		/>
 	</div>
@@ -912,6 +930,10 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
+	allowRateChange: {
+		type: Boolean,
+		default: false,
+	},
 })
 
 /**
@@ -934,6 +956,7 @@ const emit = defineEmits([
 	"remove-offer",       // (offerId) - Remove applied offer
 	"update-uom",         // (lineIdOrCode, newUom) - Change item's unit of measure
 	"update-cost-center", // (lineIdOrCode, costCenter) - Change item cost center
+	"update-rate",        // (lineIdOrCode, rate) - Change item unit rate
 	"edit-item",          // (item) - Open item edit dialog
 	"view-shift",         // () - View current shift details
 	"show-drafts",        // () - Show draft/held orders
@@ -1585,6 +1608,15 @@ function getOtherUoms(item) {
  */
 function selectUom(item, uom) {
 	handleUomChange(item, uom)
+}
+
+function onRateChange(item, value) {
+	if (!props.allowRateChange) return
+	const rate = Number.parseFloat(value)
+	if (Number.isNaN(rate) || rate < 0) return
+	const current = Number.parseFloat(item.rate) || 0
+	if (Math.abs(rate - current) < 0.0001) return
+	emit("update-rate", cartLineRef(item), rate)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

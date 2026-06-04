@@ -30,6 +30,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		removeItem,
 		updateItemQuantity,
 		updateItemCostCenter,
+		updateItemRate,
 		submitInvoice,
 		clearCart: clearInvoiceCart,
 		loadTaxRules,
@@ -697,10 +698,11 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (updatedDetails.quantity !== undefined) {
 				cartItem.quantity = updatedDetails.quantity
 			}
-			// Don't update rate directly - let recalculateItem compute it from price_list_rate and discount
-			// if (updatedDetails.rate !== undefined) {
-			// 	cartItem.rate = updatedDetails.rate
-			// }
+			if (updatedDetails.rate !== undefined) {
+				const newRate = Number.parseFloat(updatedDetails.rate) || 0
+				cartItem.price_list_rate = newRate
+				cartItem.rate = newRate
+			}
 			if (updatedDetails.warehouse !== undefined) {
 				cartItem.warehouse = updatedDetails.warehouse
 			}
@@ -856,6 +858,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		removeItem,
 		updateItemQuantity,
 		updateItemCostCenter,
+		updateItemRate,
 		clearCart,
 		setCustomer,
 		removeDeliveryNoteItems,

@@ -115,8 +115,14 @@
 									type="number"
 									min="0"
 									step="0.01"
-									readonly
-									class="w-full h-10 border border-gray-300 rounded-lg ps-16 pe-3 text-sm font-semibold bg-gray-50 cursor-not-allowed"
+									:readonly="!allowRateChange"
+									:class="[
+										'w-full h-10 border border-gray-300 rounded-lg ps-16 pe-3 text-sm font-semibold',
+										allowRateChange
+											? 'bg-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+											: 'bg-gray-50 cursor-not-allowed',
+									]"
+									@input="calculateTotals"
 								/>
 							</div>
 						</div>
@@ -490,6 +496,10 @@ const props = defineProps({
 		type: String,
 		default: "EGP",
 	},
+	allowRateChange: {
+		type: Boolean,
+		default: false,
+	},
 })
 
 const emit = defineEmits(["update:modelValue", "update-item"])
@@ -549,7 +559,7 @@ watch(
 			localItem.value = { ...newItem }
 			localQuantity.value = newItem.quantity || 1
 			localUom.value = newItem.uom || newItem.stock_uom || __("Unit")
-			localRate.value = newItem.rate || 0
+			localRate.value = newItem.price_list_rate || newItem.rate || 0
 			localWarehouse.value =
 				newItem.warehouse || props.warehouses[0]?.name || ""
 
@@ -827,6 +837,7 @@ async function updateItem() {
 		quantity: localQuantity.value,
 		uom: localUom.value,
 		rate: localRate.value,
+		price_list_rate: localRate.value,
 		warehouse: localWarehouse.value,
 		discount_percentage:
 			discountType.value === "percentage" ? discountValue.value : 0,
