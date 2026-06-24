@@ -35,8 +35,8 @@ class SalesByCostCenterReport:
 				"width": 240,
 			},
 			{
-				"label": _("Net Total"),
-				"fieldname": "net_total",
+				"label": _("Amount"),
+				"fieldname": "amount",
 				"fieldtype": "Currency",
 				"options": self.currency,
 				"width": 120,
@@ -103,17 +103,17 @@ class SalesByCostCenterReport:
 	def _cost_center_share_sql(self, amount_expr):
 		return f"""
 			CASE
-				WHEN IFNULL(si.base_net_total, 0) = 0 THEN 0
-				ELSE (sii.base_net_amount / si.base_net_total) * ({amount_expr})
+				WHEN IFNULL(si.base_total, 0) = 0 THEN 0
+				ELSE (sii.base_amount / si.base_total) * ({amount_expr})
 			END
 		"""
 
-	def _get_net_by_cost_center(self):
+	def _get_amount_by_cost_center(self):
 		return frappe.db.sql(
 			f"""
 			SELECT
 				{self._cost_center_expr()} AS entity,
-				SUM(sii.base_net_amount) AS net_total
+				SUM(sii.base_amount) AS amount
 			FROM `tabSales Invoice` si
 			INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
 			LEFT JOIN `tabItem Default` igd
@@ -162,7 +162,7 @@ class SalesByCostCenterReport:
 		return {row.entity: flt(row.tax) for row in rows}
 
 	def _get_grand_by_cost_center(self):
-		"""Allocate invoice grand total by line net share (matches SI grand_total / payments)."""
+		"""Allocate invoice grand total by line amount share (matches SI grand_total / payments)."""
 		grand_expr = self._cost_center_share_sql("si.base_grand_total")
 		rows = frappe.db.sql(
 			f"""
@@ -200,26 +200,26 @@ class SalesByCostCenterReport:
 			as_dict=True,
 		)
 
-	def _merge_cost_center_rows(self, net_rows, tax_by_entity, grand_by_entity):
+	def _merge_cost_center_rows(self, amount_rows, tax_by_entity, grand_by_entity):
 		entities = set()
-		net_by_entity = {}
-		for row in net_rows:
+		amount_by_entity = {}
+		for row in amount_rows:
 			entity = row.entity or _("Not Set")
 			entities.add(entity)
-			net_by_entity[entity] = flt(row.net_total)
+			amount_by_entity[entity] = flt(row.amount)
 		entities.update(tax_by_entity.keys())
 		entities.update(grand_by_entity.keys())
 
 		rows = []
 		for entity in sorted(entities, key=lambda value: (value or "").lower()):
-			net_total = self._round_currency(net_by_entity.get(entity, 0))
+			amount = self._round_currency(amount_by_entity.get(entity, 0))
 			tax = self._round_currency(tax_by_entity.get(entity, 0))
 			grand_total = self._round_currency(grand_by_entity.get(entity, 0))
-			if net_total or tax or grand_total:
+			if amount or tax or grand_total:
 				rows.append(
 					{
 						"entity": entity,
-						"net_total": net_total,
+						"amount": amount,
 						"tax": tax,
 						"grand_total": grand_total,
 					}
@@ -228,16 +228,16 @@ class SalesByCostCenterReport:
 
 	def _build_data(self):
 		self.data = []
-		net_rows = self._get_net_by_cost_center()
+		amount_rows = self._get_amount_by_cost_center()
 		tax_by_entity = self._get_tax_by_cost_center()
 		grand_by_entity = self._get_grand_by_cost_center()
-		cost_center_rows = self._merge_cost_center_rows(net_rows, tax_by_entity, grand_by_entity)
+		cost_center_rows = self._merge_cost_center_rows(amount_rows, tax_by_entity, grand_by_entity)
 
 		self._append_section(_("Sales by Cost Center"), cost_center_rows, store_chart_rows=True)
 		payment_rows = [
 			{
 				"entity": row.entity or _("Not Set"),
-				"net_total": None,
+				"amount": None,
 				"tax": None,
 				"grand_total": self._round_currency(row.grand_total),
 			}
@@ -265,8 +265,8 @@ class SalesByCostCenterReport:
 				sum(self._round_currency(r.get("grand_total", 0)) for r in rows)
 			)
 		else:
-			row["net_total"] = self._round_currency(
-				sum(self._round_currency(r.get("net_total", 0)) for r in rows)
+			row["amount"] = self._round_currency(
+				sum(self._round_currency(r.get("amount", 0)) for r in rows)
 			)
 			row["tax"] = self._round_currency(sum(self._round_currency(r.get("tax", 0)) for r in rows))
 			row["grand_total"] = self._round_currency(
